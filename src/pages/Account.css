@@ -648,6 +648,91 @@
 
 /* CUSTOMER FEEDBACK */
 
+.account-product-reviews {
+  margin-top: 18px;
+  padding: 18px;
+  border: 1px solid #E3D8C3;
+  background: #FFFCF6;
+}
+
+.account-product-reviews-heading {
+  padding-bottom: 14px;
+  border-bottom: 1px solid #E8DFCF;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.account-product-reviews-heading > div {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.account-product-reviews-heading span {
+  color: #A07C3C;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 1.4px;
+}
+
+.account-product-reviews-heading strong {
+  color: #172B4D;
+  font-family: 'Playfair Display', serif;
+  font-size: 18px;
+  font-weight: 500;
+}
+
+.account-product-reviews-heading small {
+  color: #777E88;
+  font-size: 10px;
+}
+
+.account-product-review-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.account-product-review-item {
+  min-width: 0;
+  padding: 14px 0;
+  border-bottom: 1px solid #EEE7DB;
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 13px;
+}
+
+.account-product-review-item:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.account-product-review-item > img {
+  width: 52px;
+  height: 62px;
+  object-fit: cover;
+  background: #F2EEE7;
+}
+
+.account-product-review-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.account-product-review-copy strong {
+  color: #172B4D;
+  font-size: 12px;
+}
+
+.account-product-review-copy small {
+  color: #838892;
+  font-size: 9px;
+}
+
 .account-review-button {
   margin-top: 16px;
   min-height: 42px;
@@ -672,6 +757,11 @@
   color: #FFFFFF;
 }
 
+.account-review-button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 .account-review-submitted {
   margin-top: 16px;
   padding: 14px 16px;
@@ -681,6 +771,11 @@
   display: flex;
   align-items: center;
   gap: 11px;
+}
+
+.account-product-review-item .account-review-button,
+.account-product-review-item .account-review-submitted {
+  margin-top: 0;
 }
 
 .account-review-submitted > svg {
@@ -1498,6 +1593,30 @@
 
   .account-feedback-section {
     padding: 19px 14px;
+  }
+
+  .account-product-reviews {
+    padding: 15px 13px;
+  }
+
+  .account-product-reviews-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .account-product-review-item {
+    grid-template-columns: 48px minmax(0, 1fr);
+  }
+
+  .account-product-review-item > img {
+    width: 48px;
+    height: 58px;
+  }
+
+  .account-product-review-item .account-review-button,
+  .account-product-review-item .account-review-submitted {
+    grid-column: 1 / -1;
+    width: 100%;
   }
 
   .account-feedback-heading {

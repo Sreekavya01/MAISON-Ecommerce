@@ -10,6 +10,7 @@ const {
   onDocumentUpdated,
 } = require('firebase-functions/v2/firestore');
 const { onSchedule } = require('firebase-functions/v2/scheduler');
+const { HttpsError, onCall } = require('firebase-functions/v2/https');
 
 initializeApp();
 setGlobalOptions({ maxInstances: 10 });
@@ -58,6 +59,196 @@ const getStorefrontUrl = () => {
 
   return `https://${projectId}.web.app`;
 };
+
+const getProductId = (product) => {
+  const productId = product?.id ?? product?.productId;
+
+  return productId === undefined || productId === null
+    ? ''
+    : String(productId).trim();
+};
+
+const legacyReviewCoversProduct = (review, productId) => {
+  if (!review) return false;
+
+  const explicitProductId = String(review.productId || '').trim();
+
+  if (explicitProductId) return explicitProductId === productId;
+
+  const products = Array.isArray(review.products) ? review.products : [];
+
+  if (products.length === 0) return true;
+
+  return products.some((product) => getProductId(product) === productId);
+};
+
+const reviewsCoverAllOrderProducts = (order, reviews) => {
+  const productIds = [
+    ...new Set((order.products || []).map(getProductId).filter(Boolean)),
+  ];
+
+  return productIds.length > 0 && productIds.every((productId) =>
+    reviews.some((review) => legacyReviewCoversProduct(review, productId))
+  );
+};
+
+exports.submitProductReview = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError(
+      'unauthenticated',
+      'Please sign in to submit a review.'
+    );
+  }
+
+  const orderId = String(request.data?.orderId || '').trim();
+  const productId = String(request.data?.productId || '').trim();
+  const rating = Number(request.data?.rating);
+  const review = String(request.data?.review || '').trim();
+
+  if (
+    !orderId ||
+    !productId ||
+    orderId.includes('/') ||
+    productId.includes('/') ||
+    !Number.isInteger(rating) ||
+    rating < 1 ||
+    rating > 5 ||
+    review.length < 10 ||
+    review.length > 2000
+  ) {
+    throw new HttpsError('invalid-argument', 'Invalid product review.');
+  }
+
+  const reviewId = `${orderId}_${productId}`;
+  const orderRef = db.collection('orders').doc(orderId);
+  const reviewRef = db.collection('customerReviews').doc(reviewId);
+  const legacyReviewRef = db.collection('customerReviews').doc(orderId);
+  const userRef = db.collection('users').doc(request.auth.uid);
+  const notificationRef = db
+    .collection('adminNotifications')
+    .doc(`review_${reviewId}`);
+  let createdReview;
+
+  await db.runTransaction(async (transaction) => {
+    const [
+      orderSnapshot,
+      reviewSnapshot,
+      legacyReviewSnapshot,
+      userSnapshot,
+    ] = await Promise.all([
+      transaction.get(orderRef),
+      transaction.get(reviewRef),
+      transaction.get(legacyReviewRef),
+      transaction.get(userRef),
+    ]);
+
+    if (!orderSnapshot.exists) {
+      throw new HttpsError('not-found', 'Order not found.');
+    }
+
+    const order = orderSnapshot.data();
+
+    if (
+      order.userId !== request.auth.uid ||
+      String(order.orderStatus || '').toLowerCase() !== 'delivered'
+    ) {
+      throw new HttpsError(
+        'permission-denied',
+        'Only your own delivered orders can be reviewed.'
+      );
+    }
+
+    const reviewedProduct = (order.products || []).find(
+      (product) => getProductId(product) === productId
+    );
+
+    if (!reviewedProduct) {
+      throw new HttpsError(
+        'failed-precondition',
+        'The product is not part of this delivered order.'
+      );
+    }
+
+    const legacyReview = legacyReviewSnapshot.exists
+      ? legacyReviewSnapshot.data()
+      : null;
+
+    if (
+      reviewSnapshot.exists ||
+      legacyReviewCoversProduct(legacyReview, productId)
+    ) {
+      throw new HttpsError(
+        'already-exists',
+        'A review for this product and order already exists.'
+      );
+    }
+
+    const user = userSnapshot.exists ? userSnapshot.data() : {};
+    const customerName = [
+      order.customer?.fullName,
+      order.customer?.name,
+      user.name,
+      request.auth.token.name,
+    ]
+      .map((name) => String(name || '').trim())
+      .find(
+        (name) =>
+          name &&
+          !['customer', 'maison customer'].includes(name.toLowerCase())
+      );
+
+    if (!customerName) {
+      throw new HttpsError(
+        'failed-precondition',
+        'Add your name to your account before submitting a review.'
+      );
+    }
+
+    const productName = String(
+      reviewedProduct.name || 'MAISON Product'
+    ).trim();
+    const orderReference = String(order.orderId || orderId);
+    const orderTotal = Number(order.total);
+
+    createdReview = {
+      userId: request.auth.uid,
+      orderId,
+      orderReference,
+      customerName,
+      customerEmail: String(request.auth.token.email || ''),
+      productId,
+      productName,
+      productSummary: productName.slice(0, 500),
+      products: [reviewedProduct],
+      orderTotal: Number.isFinite(orderTotal) ? orderTotal : 0,
+      rating,
+      review,
+      status: 'pending',
+      createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    };
+
+    transaction.create(reviewRef, createdReview);
+    transaction.create(notificationRef, {
+      type: 'customer_review',
+      title: 'New Customer Review',
+      message: `${customerName} submitted a ${rating}-star review for ${productName} in order ${orderReference}.`.slice(0, 500),
+      relatedDocumentId: reviewId,
+      sourceCollection: 'customerReviews',
+      targetPage: '/admin-customer-reviews',
+      isRead: false,
+      readAt: null,
+      createdAt: FieldValue.serverTimestamp(),
+    });
+  });
+
+  return {
+    reviewId,
+    productId,
+    productName: createdReview.productName,
+    status: 'pending',
+  };
+});
 
 const createNotificationOnce = async (notificationId, notification) => {
   const notificationRef = db
@@ -293,21 +484,26 @@ exports.scheduleOrderFeedbackEmail = onDocumentUpdated(
     const orderId = event.params.orderId;
     const orderRef = db.collection('orders').doc(orderId);
     const queueRef = db.collection('feedbackEmailQueue').doc(orderId);
-    const reviewRef = db.collection('customerReviews').doc(orderId);
+    const reviewsQuery = db
+      .collection('customerReviews')
+      .where('orderId', '==', orderId);
     const scheduledFor = Timestamp.fromMillis(Date.now() + FEEDBACK_DELAY_MS);
 
     await db.runTransaction(async (transaction) => {
-      const [queueSnapshot, reviewSnapshot, currentOrderSnapshot] = await Promise.all([
+      const [queueSnapshot, reviewsSnapshot, currentOrderSnapshot] = await Promise.all([
         transaction.get(queueRef),
-        transaction.get(reviewRef),
+        transaction.get(reviewsQuery),
         transaction.get(orderRef),
       ]);
       const currentOrder = currentOrderSnapshot.data();
+      const reviews = reviewsSnapshot.docs.map((reviewDocument) =>
+        reviewDocument.data()
+      );
 
       if (
         !currentOrderSnapshot.exists ||
         String(currentOrder?.orderStatus || '').toLowerCase() !== 'delivered' ||
-        reviewSnapshot.exists ||
+        reviewsCoverAllOrderProducts(currentOrder, reviews) ||
         currentOrder?.feedbackEmailSentAt ||
         ['pending', 'sending'].includes(queueSnapshot.data()?.status)
       ) {
@@ -455,12 +651,17 @@ const processFeedbackQueueItem = async (queueDocument) => {
 
   const orderId = claimedQueue.orderId || queueDocument.id;
   const orderRef = db.collection('orders').doc(orderId);
-  const reviewRef = db.collection('customerReviews').doc(orderId);
-  const [orderSnapshot, reviewSnapshot] = await Promise.all([
+  const reviewsQuery = db
+    .collection('customerReviews')
+    .where('orderId', '==', orderId);
+  const [orderSnapshot, reviewsSnapshot] = await Promise.all([
     orderRef.get(),
-    reviewRef.get(),
+    reviewsQuery.get(),
   ]);
   const order = orderSnapshot.data();
+  const reviews = reviewsSnapshot.docs.map((reviewDocument) =>
+    reviewDocument.data()
+  );
 
   if (!orderSnapshot.exists || !order) {
     await finishFeedbackQueueItem({
@@ -484,7 +685,7 @@ const processFeedbackQueueItem = async (queueDocument) => {
     return;
   }
 
-  if (reviewSnapshot.exists) {
+  if (reviewsCoverAllOrderProducts(order, reviews)) {
     await finishFeedbackQueueItem({
       queueRef,
       orderRef,

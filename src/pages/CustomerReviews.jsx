@@ -45,6 +45,30 @@ const formatReviewDate = (value) => {
 const getReviewElementId = (reviewId) =>
   `customer-review-${String(reviewId).replace(/[^a-zA-Z0-9_-]/g, '')}`;
 
+const getReviewProductId = (review) => {
+  const productId =
+    review.productId ?? review.products?.[0]?.id ?? review.products?.[0]?.productId;
+
+  return productId === undefined || productId === null
+    ? ''
+    : String(productId).trim();
+};
+
+const getReviewProductName = (review) => {
+  if (review.productName) return review.productName;
+
+  const products = Array.isArray(review.products) ? review.products : [];
+
+  if (products.length === 1) {
+    return products[0]?.name || review.productSummary || 'Order product';
+  }
+
+  return review.productSummary ||
+    (products.length > 1
+      ? `${products.length} products (legacy order review)`
+      : 'Order products');
+};
+
 function CustomerReviews() {
   const location = useLocation();
   const relatedDocumentId = location.state?.relatedDocumentId;
@@ -111,14 +135,20 @@ function CustomerReviews() {
 
     return reviews.filter((review) => {
       const matchesStatus =
-        statusFilter === 'all' || review.status === statusFilter;
+        statusFilter === 'all' ||
+        (review.status || 'pending') === statusFilter;
       const matchesSearch =
         !search ||
         [
           review.orderReference,
           review.customerName,
           review.customerEmail,
+          review.productId,
+          review.productName,
           review.productSummary,
+          ...(Array.isArray(review.products)
+            ? review.products.map((product) => product?.name)
+            : []),
           review.review,
         ].some((value) => String(value || '').toLowerCase().includes(search));
 
@@ -199,7 +229,7 @@ function CustomerReviews() {
 
   const removeReview = async (review) => {
     const confirmed = window.confirm(
-      `Delete the review for order ${review.orderReference || review.id}? This cannot be undone.`
+      `Delete the review for ${getReviewProductName(review)} in order ${review.orderReference || review.orderId || review.id}? This cannot be undone.`
     );
 
     if (!confirmed) return;
@@ -306,9 +336,14 @@ function CustomerReviews() {
             >
               <div className="review-admin-card-top">
                 <div>
-                  <span>VERIFIED ORDER</span>
-                  <h2>{review.orderReference || review.orderId}</h2>
-                  <small>{formatReviewDate(review.createdAt)}</small>
+                  <span>
+                    {review.productId ? 'VERIFIED PRODUCT REVIEW' : 'LEGACY ORDER REVIEW'}
+                  </span>
+                  <h2>{getReviewProductName(review)}</h2>
+                  <small>
+                    Order {review.orderReference || review.orderId} ·{' '}
+                    {formatReviewDate(review.createdAt)}
+                  </small>
                 </div>
 
                 <select
@@ -316,7 +351,7 @@ function CustomerReviews() {
                   value={review.status || 'pending'}
                   onChange={(event) => updateReviewStatus(review, event.target.value)}
                   disabled={updatingId === review.id}
-                  aria-label={`Status for review ${review.orderReference || review.id}`}
+                  aria-label={`Status for ${getReviewProductName(review)} review`}
                 >
                   <option value="pending">Pending</option>
                   <option value="published">Published</option>
@@ -339,7 +374,13 @@ function CustomerReviews() {
 
               <div className="review-admin-meta">
                 <div><span>CUSTOMER</span><strong>{review.customerName}</strong><small>{review.customerEmail}</small></div>
-                <div><span>PRODUCTS</span><strong>{review.productSummary || 'Order products'}</strong></div>
+                <div>
+                  <span>PRODUCT</span>
+                  <strong>{getReviewProductName(review)}</strong>
+                  {getReviewProductId(review) && (
+                    <small>ID: {getReviewProductId(review)}</small>
+                  )}
+                </div>
                 <div><span>ORDER VALUE</span><strong>₹{Number(review.orderTotal || 0).toLocaleString('en-IN')}</strong></div>
               </div>
 

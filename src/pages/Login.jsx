@@ -6,6 +6,8 @@ import {
   Mail,
   UserRound,
   ArrowRight,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 
 import {
@@ -25,6 +27,7 @@ import {
 } from 'firebase/firestore';
 
 import { auth, db } from '../firebase';
+
 import {
   ADMIN_NOTIFICATION_TYPES,
   addAdminNotificationWrite,
@@ -41,6 +44,7 @@ function Login() {
   const location = useLocation();
 
   const requestedCustomerDestination = location.state?.from;
+
   const customerDestination =
     typeof requestedCustomerDestination === 'string' &&
     requestedCustomerDestination.startsWith('/account')
@@ -49,6 +53,7 @@ function Login() {
 
   const [mode, setMode] = useState('login');
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -61,6 +66,97 @@ function Login() {
       ...formData,
       [event.target.name]: event.target.value,
     });
+  };
+
+  // CREATE OR REPAIR CUSTOMER PROFILE
+  const ensureUserProfile = async (user, registrationName = '') => {
+    const userRef = doc(db, 'users', user.uid);
+    const userSnapshot = await getDoc(userRef);
+
+    const existingData = userSnapshot.exists()
+      ? userSnapshot.data()
+      : {};
+
+    // Never change an existing admin account.
+    if (existingData.role === 'admin') {
+      return {
+        ...existingData,
+        role: 'admin',
+      };
+    }
+
+    const customerName =
+      existingData.name ||
+      user.displayName ||
+      registrationName.trim() ||
+      user.email?.split('@')[0] ||
+      'MAISON Customer';
+
+    const profileNeedsRepair =
+      !userSnapshot.exists() ||
+      !existingData.name ||
+      !existingData.email ||
+      !existingData.role ||
+      !existingData.createdAt;
+
+    if (profileNeedsRepair) {
+      const userData = {
+        name: customerName,
+        email: user.email || existingData.email || '',
+        role: 'customer',
+        createdAt:
+          existingData.createdAt || serverTimestamp(),
+      };
+
+      const batch = writeBatch(db);
+
+      batch.set(userRef, userData, { merge: true });
+
+      // Notify admin only when creating or repairing
+      // a profile that previously had no customer role.
+      if (
+        !userSnapshot.exists() ||
+        !existingData.role
+      ) {
+        addAdminNotificationWrite(batch, {
+          id: adminNotificationIds.customer(user.uid),
+          type: ADMIN_NOTIFICATION_TYPES.CUSTOMER_REGISTERED,
+          message: `${customerName} created a MAISON customer account.`,
+          relatedDocumentId: user.uid,
+          sourceCollection: 'users',
+          targetPage: '/admin-customers',
+        });
+      }
+
+      await batch.commit();
+
+      return {
+        ...existingData,
+        ...userData,
+      };
+    }
+
+    return existingData;
+  };
+
+  // REDIRECT USER BASED ON FIRESTORE ROLE
+  const redirectUser = async (user) => {
+    const userData = await ensureUserProfile(user);
+
+    if (userData.role === 'admin') {
+      toast.success('Welcome to MAISON Admin Dashboard!');
+      navigate('/admin-dashboard', { replace: true });
+      return;
+    }
+
+    if (userData.role === 'customer') {
+      toast.success('Welcome to MAISON!');
+      navigate(customerDestination, { replace: true });
+      return;
+    }
+
+    await signOut(auth);
+    toast.error('Invalid account role.');
   };
 
   // GOOGLE SIGN-IN
@@ -78,55 +174,7 @@ function Login() {
 
       const result = await signInWithPopup(auth, provider);
 
-      const user = result.user;
-
-      const userRef = doc(db, 'users', user.uid);
-      const userDoc = await getDoc(userRef);
-
-      let userData;
-
-      if (!userDoc.exists()) {
-        userData = {
-          name: user.displayName || 'MAISON Customer',
-          email: user.email,
-          role: 'customer',
-          createdAt: serverTimestamp(),
-        };
-
-        const batch = writeBatch(db);
-
-        batch.set(userRef, userData);
-        addAdminNotificationWrite(batch, {
-          id: adminNotificationIds.customer(user.uid),
-          type: ADMIN_NOTIFICATION_TYPES.CUSTOMER_REGISTERED,
-          message: `${userData.name} created a MAISON customer account.`,
-          relatedDocumentId: user.uid,
-          sourceCollection: 'users',
-          targetPage: '/admin-customers',
-        });
-
-        await batch.commit();
-      } else {
-        userData = userDoc.data();
-      }
-
-      if (userData.role === 'admin') {
-        toast.success('Welcome to MAISON Admin Dashboard!');
-
-        navigate('/admin-dashboard', { replace: true });
-        return;
-      }
-
-      if (userData.role === 'customer') {
-        toast.success('Welcome to MAISON!');
-
-        navigate(customerDestination, { replace: true });
-        return;
-      }
-
-      await signOut(auth);
-
-      toast.error('Invalid account role.');
+      await redirectUser(result.user);
 
     } catch (error) {
       console.error('Google authentication error:', error);
@@ -134,16 +182,12 @@ function Login() {
       const errorMessages = {
         'auth/popup-closed-by-user':
           'Google sign-in was cancelled.',
-
         'auth/popup-blocked':
           'Your browser blocked the Google sign-in popup.',
-
         'auth/cancelled-popup-request':
           'Google sign-in was cancelled.',
-
         'auth/account-exists-with-different-credential':
           'An account already exists with this email. Please use your original login method.',
-
         'auth/network-request-failed':
           'Network error. Please check your internet connection.',
       };
@@ -190,25 +234,10 @@ function Login() {
 
         const user = userCredential.user;
 
-        const userData = {
-          name: formData.name.trim(),
-          email: user.email,
-          role: 'customer',
-          createdAt: serverTimestamp(),
-        };
-        const batch = writeBatch(db);
-
-        batch.set(doc(db, 'users', user.uid), userData);
-        addAdminNotificationWrite(batch, {
-          id: adminNotificationIds.customer(user.uid),
-          type: ADMIN_NOTIFICATION_TYPES.CUSTOMER_REGISTERED,
-          message: `${userData.name} created a MAISON customer account.`,
-          relatedDocumentId: user.uid,
-          sourceCollection: 'users',
-          targetPage: '/admin-customers',
-        });
-
-        await batch.commit();
+        await ensureUserProfile(
+          user,
+          formData.name
+        );
 
         toast.success('Account created successfully!');
 
@@ -224,42 +253,7 @@ function Login() {
           password
         );
 
-      const user = userCredential.user;
-
-      const userDoc = await getDoc(
-        doc(db, 'users', user.uid)
-      );
-
-      if (!userDoc.exists()) {
-        await signOut(auth);
-
-        toast.error(
-          'User profile not found. Please contact support.'
-        );
-        return;
-      }
-
-      const userData = userDoc.data();
-
-      // ADMIN LOGIN
-      if (userData.role === 'admin') {
-        toast.success('Welcome to MAISON Admin Dashboard!');
-
-        navigate('/admin-dashboard', { replace: true });
-        return;
-      }
-
-      // CUSTOMER LOGIN
-      if (userData.role === 'customer') {
-        toast.success('Welcome back to MAISON!');
-
-        navigate(customerDestination, { replace: true });
-        return;
-      }
-
-      await signOut(auth);
-
-      toast.error('Invalid account role.');
+      await redirectUser(userCredential.user);
 
     } catch (error) {
       console.error('Authentication error:', error);
@@ -267,24 +261,20 @@ function Login() {
       const errorMessages = {
         'auth/invalid-credential':
           'Incorrect email or password.',
-
         'auth/user-not-found':
           'No account found with this email.',
-
         'auth/wrong-password':
           'Incorrect password.',
-
         'auth/email-already-in-use':
           'An account with this email already exists.',
-
         'auth/weak-password':
           'Password must contain at least 6 characters.',
-
         'auth/invalid-email':
           'Please enter a valid email address.',
-
         'auth/too-many-requests':
           'Too many attempts. Please try again later.',
+        'permission-denied':
+          'Unable to save your customer profile. Please check Firebase permissions.',
       };
 
       toast.error(
@@ -382,11 +372,12 @@ function Login() {
 
                 <label>Password</label>
 
-                <div className="login-input-wrapper">
+                <div className="login-input-wrapper password-input-wrapper">
+
                   <LockKeyhole size={19} />
 
                   <input
-                    type="password"
+                    type={showPassword ? 'text' : 'password'}
                     name="password"
                     placeholder="Enter your password"
                     value={formData.password}
@@ -394,6 +385,25 @@ function Login() {
                     minLength={6}
                     required
                   />
+
+                  <button
+                    type="button"
+                    className="password-toggle-button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    aria-label={
+                      showPassword ? 'Hide password' : 'Show password'
+                    }
+                    title={
+                      showPassword ? 'Hide password' : 'Show password'
+                    }
+                  >
+                    {showPassword ? (
+                      <EyeOff size={19} />
+                    ) : (
+                      <Eye size={19} />
+                    )}
+                  </button>
+
                 </div>
 
               </div>
@@ -463,7 +473,19 @@ function Login() {
               <>
                 Don't have an account?
 
-                <button onClick={() => setMode('register')}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFormData({
+                      name: '',
+                      email: formData.email,
+                      password: '',
+                    });
+
+                    setShowPassword(false);
+                    setMode('register');
+                  }}
+                >
                   Create Account
                 </button>
               </>
@@ -473,14 +495,23 @@ function Login() {
               <>
                 Already have an account?
 
-                <button onClick={() => setMode('login')}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowPassword(false);
+                    setMode('login');
+                  }}
+                >
                   Sign In
                 </button>
               </>
             )}
 
             {mode === 'forgot' && (
-              <button onClick={() => setMode('login')}>
+              <button
+                type="button"
+                onClick={() => setMode('login')}
+              >
                 Back to Sign In
               </button>
             )}

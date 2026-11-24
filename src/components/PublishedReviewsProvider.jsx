@@ -33,9 +33,10 @@ const normalizePublishedReview = (reviewDoc) => {
   const customerName =
     typeof data.customerName === 'string' ? data.customerName.trim() : '';
   const products = Array.isArray(data.products) ? data.products : [];
-  const productIds = [
-    ...new Set(products.map(getProductId).filter(Boolean)),
-  ];
+  const explicitProductId = getProductId({ productId: data.productId });
+  const productIds = explicitProductId
+    ? [explicitProductId]
+    : [...new Set(products.map(getProductId).filter(Boolean))];
 
   if (
     data.status !== 'published' ||

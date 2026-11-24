@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate, Link } from 'react-router-dom';
 
 import toast from 'react-hot-toast';
@@ -170,6 +170,56 @@ function getOrderElementId(orderId) {
   return `account-order-${String(orderId).replace(/[^a-zA-Z0-9_-]/g, '')}`;
 }
 
+function getProductId(product) {
+  const productId = product?.id ?? product?.productId;
+
+  return productId === undefined || productId === null
+    ? ''
+    : String(productId).trim();
+}
+
+function getReviewDocumentId(orderId, productId) {
+  return `${String(orderId).trim()}_${String(productId).trim()}`;
+}
+
+function getReviewableProducts(order) {
+  const productsById = new Map();
+
+  (order.products || []).forEach((product) => {
+    const productId = getProductId(product);
+
+    if (productId && !productsById.has(productId)) {
+      productsById.set(productId, product);
+    }
+  });
+
+  return Array.from(productsById.values());
+}
+
+function reviewCoversProduct(review, orderId, productId) {
+  if (!review || review.orderId !== orderId) return false;
+
+  const explicitProductId = String(review.productId || '').trim();
+
+  if (explicitProductId) {
+    return explicitProductId === productId;
+  }
+
+  const linkedProducts = Array.isArray(review.products)
+    ? review.products
+    : [];
+
+  if (linkedProducts.length > 0) {
+    return linkedProducts.some(
+      (reviewedProduct) => getProductId(reviewedProduct) === productId
+    );
+  }
+
+  // Legacy reviews used the order ID as their document ID and represented
+  // feedback for the whole order.
+  return review.id === orderId;
+}
+
 function Account({ wishlist = [], onAddToCart }) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -205,7 +255,9 @@ function Account({ wishlist = [], onAddToCart }) {
   const [activeFeedbackOrderId, setActiveFeedbackOrderId] = useState(
     requestedReviewOrder || null
   );
+  const [activeFeedbackProductId, setActiveFeedbackProductId] = useState(null);
   const [submittingReview, setSubmittingReview] = useState(false);
+  const requestedReviewOpened = useRef(false);
 
   const [reviewForm, setReviewForm] = useState({
     rating: 0,
@@ -429,13 +481,37 @@ function Account({ wishlist = [], onAddToCart }) {
     }
 
     const frame = window.requestAnimationFrame(() => {
+      if (!requestedReviewOpened.current) {
+        const requestedOrder = orders.find(
+          (order) => order.id === requestedReviewOrder
+        );
+        const firstUnreviewedProduct = getReviewableProducts(
+          requestedOrder || {}
+        ).find((product) =>
+          !reviews.some((review) =>
+            reviewCoversProduct(
+              review,
+              requestedReviewOrder,
+              getProductId(product)
+            )
+          )
+        );
+
+        requestedReviewOpened.current = true;
+
+        if (firstUnreviewedProduct) {
+          setActiveFeedbackOrderId(requestedReviewOrder);
+          setActiveFeedbackProductId(getProductId(firstUnreviewedProduct));
+        }
+      }
+
       document
         .getElementById(getOrderElementId(requestedReviewOrder))
         ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     });
 
     return () => window.cancelAnimationFrame(frame);
-  }, [activeSection, loadingOrders, requestedReviewOrder, orders.length]);
+  }, [activeSection, loadingOrders, orders, requestedReviewOrder, reviews]);
 
   // PROFILE FORM CHANGE
 
@@ -564,26 +640,34 @@ function Account({ wishlist = [], onAddToCart }) {
     );
   };
 
-  const getOrderReview = (orderId) => {
-    return reviews.find(
-      (review) => review.orderId === orderId || review.id === orderId
+  const getProductReview = (orderId, productId) => {
+    return reviews.find((review) =>
+      reviewCoversProduct(review, orderId, productId)
     );
   };
 
-  const openFeedbackForm = (order) => {
+  const openFeedbackForm = (order, product) => {
     if (!isDelivered(order)) {
       toast.error('Reviews are available after delivery.');
       return;
     }
 
-    if (getOrderReview(order.id)) {
-      toast.success('You already reviewed this order.');
+    const productId = getProductId(product);
+
+    if (!productId) {
+      toast.error('This product is missing the information needed for a review.');
+      return;
+    }
+
+    if (getProductReview(order.id, productId)) {
+      toast.success('You already reviewed this product.');
       return;
     }
 
     setActiveCancelOrder(null);
     setActiveReturnOrder(null);
     setActiveFeedbackOrderId(order.id);
+    setActiveFeedbackProductId(productId);
     setReviewForm({ rating: 0, review: '' });
   };
 
@@ -591,13 +675,15 @@ function Account({ wishlist = [], onAddToCart }) {
     if (submittingReview) return;
 
     setActiveFeedbackOrderId(null);
+    setActiveFeedbackProductId(null);
     setReviewForm({ rating: 0, review: '' });
   };
 
-  const submitReview = async (event, order) => {
+  const submitReview = async (event, order, product) => {
     event.preventDefault();
 
     const currentUser = auth.currentUser;
+    const productId = getProductId(product);
     const reviewText = reviewForm.review.trim();
 
     if (!currentUser) {
@@ -605,7 +691,12 @@ function Account({ wishlist = [], onAddToCart }) {
       return;
     }
 
-    if (getOrderReview(order.id)) {
+    if (!productId) {
+      toast.error('This product is missing the information needed for a review.');
+      return;
+    }
+
+    if (getProductReview(order.id, productId)) {
       toast.success('Review already submitted.');
       closeFeedbackForm();
       return;
@@ -646,18 +737,12 @@ function Account({ wishlist = [], onAddToCart }) {
         return;
       }
 
-      const reviewedProducts = Array.isArray(latestOrder.products)
-        ? latestOrder.products
-        : [];
-      const hasVerifiedProductIds =
-        reviewedProducts.length > 0 &&
-        reviewedProducts.every((product) => {
-          const productId = product?.id ?? product?.productId;
-          return productId !== undefined && productId !== null && String(productId).trim();
-        });
+      const reviewedProduct = (latestOrder.products || []).find(
+        (orderProduct) => getProductId(orderProduct) === productId
+      );
 
-      if (!hasVerifiedProductIds) {
-        toast.error('This order is missing product information needed for a review.');
+      if (!reviewedProduct) {
+        toast.error('This product is no longer linked to the delivered order.');
         return;
       }
 
@@ -679,36 +764,46 @@ function Account({ wishlist = [], onAddToCart }) {
         return;
       }
 
+      const reviewId = getReviewDocumentId(order.id, productId);
+      const productName = String(
+        reviewedProduct.name || product.name || 'MAISON Product'
+      ).trim();
       const reviewData = {
-        userId: currentUser.uid,
-        orderId: order.id,
-        orderReference: latestOrder.orderId || order.id,
-        customerName: verifiedCustomerName,
-        customerEmail: currentUser.email || '',
-        productSummary: (latestOrder.products || [])
-          .map((product) => product.name)
-          .filter(Boolean)
-          .join(', ')
-          .slice(0, 500),
-        products: reviewedProducts,
-        orderTotal: Number(latestOrder.total || 0),
-        rating: reviewForm.rating,
-        review: reviewText,
-        status: 'pending',
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      };
+  userId: currentUser.uid,
+  orderId: order.id,
+  orderReference: latestOrder.orderId || order.id,
 
-      const reviewRef = doc(db, 'customerReviews', order.id);
+  customerName: verifiedCustomerName,
+  customerEmail: currentUser.email || '',
+
+  productId,
+  productName,
+  productSummary: productName.slice(0, 500),
+
+  // Required by Firestore Security Rules
+  product: reviewedProduct,
+
+  // Only one product in each review
+  products: [reviewedProduct],
+
+  orderTotal: Number(latestOrder.total || 0),
+
+  rating: reviewForm.rating,
+  review: reviewText,
+
+  status: 'pending',
+
+  createdAt: serverTimestamp(),
+  updatedAt: serverTimestamp(),
+};
       const reviewBatch = writeBatch(db);
 
-      reviewBatch.set(reviewRef, reviewData);
-
+      reviewBatch.set(doc(db, 'customerReviews', reviewId), reviewData);
       addAdminNotificationWrite(reviewBatch, {
-        id: adminNotificationIds.customerReview(order.id),
+        id: adminNotificationIds.customerReview(reviewId),
         type: ADMIN_NOTIFICATION_TYPES.CUSTOMER_REVIEW,
-        message: `${reviewData.customerName} submitted a ${reviewData.rating}-star review for order ${reviewData.orderReference}.`,
-        relatedDocumentId: order.id,
+        message: `${verifiedCustomerName} submitted a ${reviewForm.rating}-star review for ${productName} in order ${reviewData.orderReference}.`.slice(0, 500),
+        relatedDocumentId: reviewId,
         sourceCollection: 'customerReviews',
         targetPage: '/admin-customer-reviews',
       });
@@ -716,9 +811,9 @@ function Account({ wishlist = [], onAddToCart }) {
       await reviewBatch.commit();
 
       setReviews((previous) => [
-        ...previous.filter((review) => review.id !== order.id),
+        ...previous.filter((review) => review.id !== reviewId),
         {
-          id: order.id,
+          id: reviewId,
           ...reviewData,
           createdAt: new Date(),
           updatedAt: new Date(),
@@ -726,8 +821,9 @@ function Account({ wishlist = [], onAddToCart }) {
       ]);
 
       setActiveFeedbackOrderId(null);
+      setActiveFeedbackProductId(null);
       setReviewForm({ rating: 0, review: '' });
-      toast.success('Thank you. Your review has been submitted!');
+      toast.success(`Thank you. Your review for ${productName} is pending approval.`);
     } catch (error) {
       console.error('Error submitting customer review:', error);
 
@@ -753,6 +849,7 @@ function Account({ wishlist = [], onAddToCart }) {
 
     setActiveReturnOrder(null);
     setActiveFeedbackOrderId(null);
+    setActiveFeedbackProductId(null);
     setActiveCancelOrder(order);
     setCancellationReason('');
   };
@@ -897,6 +994,7 @@ function Account({ wishlist = [], onAddToCart }) {
 
     setActiveCancelOrder(null);
     setActiveFeedbackOrderId(null);
+    setActiveFeedbackProductId(null);
     setActiveReturnOrder(order);
 
     setReturnForm({
@@ -1306,8 +1404,27 @@ function Account({ wishlist = [], onAddToCart }) {
             ) : (
               orders.map((order) => {
                 const existingReturn = getOrderReturn(order.id);
-                const existingReview = getOrderReview(order.id);
                 const delivered = isDelivered(order);
+                const reviewableProducts = getReviewableProducts(order);
+                const reviewedProductCount = reviewableProducts.filter(
+                  (product) =>
+                    getProductReview(order.id, getProductId(product))
+                ).length;
+                const selectedFeedbackProduct =
+                  activeFeedbackOrderId === order.id
+                    ? reviewableProducts.find(
+                        (product) =>
+                          getProductId(product) === activeFeedbackProductId
+                      )
+                    : null;
+                const activeFeedbackProduct =
+                  selectedFeedbackProduct &&
+                  !getProductReview(
+                    order.id,
+                    getProductId(selectedFeedbackProduct)
+                  )
+                    ? selectedFeedbackProduct
+                    : null;
                 const eligibleForCancellation = canCancelOrder(order);
                 const cancelled =
                   String(order.orderStatus || '').toLowerCase() === 'cancelled';
@@ -1543,38 +1660,90 @@ function Account({ wishlist = [], onAddToCart }) {
 
                     {/* VERIFIED CUSTOMER FEEDBACK */}
 
-                    {delivered && existingReview ? (
-                      <div className="account-review-submitted">
-                        <CheckCircle size={18} />
-                        <div>
-                          <strong>Review Submitted</strong>
-                          <span>
-                            {existingReview.rating}/5 stars · Thank you for your feedback
-                          </span>
+                    {delivered && reviewableProducts.length > 0 && (
+                      <section className="account-product-reviews">
+                        <div className="account-product-reviews-heading">
+                          <div>
+                            <span>PRODUCT REVIEWS</span>
+                            <strong>Rate each delivered product</strong>
+                          </div>
+                          <small>
+                            {reviewedProductCount}/{reviewableProducts.length}{' '}
+                            reviewed
+                          </small>
                         </div>
-                      </div>
-                    ) : delivered ? (
-                      <button
-                        type="button"
-                        className="account-review-button"
-                        onClick={() => openFeedbackForm(order)}
-                      >
-                        <Star size={16} />
-                        Rate &amp; Review
-                      </button>
-                    ) : null}
 
-                    {delivered &&
-                      !existingReview &&
-                      activeFeedbackOrderId === order.id && (
+                        <div className="account-product-review-list">
+                          {reviewableProducts.map((product) => {
+                            const productId = getProductId(product);
+                            const existingReview = getProductReview(
+                              order.id,
+                              productId
+                            );
+
+                            return (
+                              <article
+                                className="account-product-review-item"
+                                key={productId}
+                              >
+                                <img
+                                  src={
+                                    product.image ||
+                                    'https://placehold.co/100x120?text=MAISON'
+                                  }
+                                  alt=""
+                                />
+                                <div className="account-product-review-copy">
+                                  <strong>
+                                    {product.name || 'MAISON Product'}
+                                  </strong>
+                                  <small>One review per product for this order</small>
+                                </div>
+
+                                {existingReview ? (
+                                  <div className="account-review-submitted">
+                                    <CheckCircle size={18} />
+                                    <div>
+                                      <strong>Review Submitted</strong>
+                                      <span>
+                                        {existingReview.rating}/5 stars ·{' '}
+                                        {existingReview.status === 'published'
+                                          ? 'Published'
+                                          : 'Pending approval'}
+                                      </span>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    className="account-review-button"
+                                    onClick={() =>
+                                      openFeedbackForm(order, product)
+                                    }
+                                    disabled={submittingReview}
+                                  >
+                                    <Star size={16} />
+                                    Rate &amp; Review
+                                  </button>
+                                )}
+                              </article>
+                            );
+                          })}
+                        </div>
+                      </section>
+                    )}
+
+                    {delivered && activeFeedbackProduct && (
                         <section className="account-feedback-section">
                           <div className="account-feedback-heading">
                             <div>
                               <span>MAISON CUSTOMER FEEDBACK</span>
-                              <h3>Rate Your Experience</h3>
+                              <h3>
+                                Review {activeFeedbackProduct.name || 'this product'}
+                              </h3>
                               <p>
-                                Tell us about the products, delivery and your
-                                overall MAISON experience.
+                                Share a separate rating and written review for
+                                this delivered product.
                               </p>
                             </div>
                             <button
@@ -1589,7 +1758,9 @@ function Account({ wishlist = [], onAddToCart }) {
 
                           <form
                             className="account-feedback-form"
-                            onSubmit={(event) => submitReview(event, order)}
+                            onSubmit={(event) =>
+                              submitReview(event, order, activeFeedbackProduct)
+                            }
                           >
                             <fieldset>
                               <legend>Overall rating</legend>
@@ -1632,10 +1803,12 @@ function Account({ wishlist = [], onAddToCart }) {
                               </span>
                             </fieldset>
 
-                            <label htmlFor={`review-${order.id}`}>
+                            <label
+                              htmlFor={`review-${order.id}-${activeFeedbackProductId}`}
+                            >
                               Written review
                               <textarea
-                                id={`review-${order.id}`}
+                                id={`review-${order.id}-${activeFeedbackProductId}`}
                                 value={reviewForm.review}
                                 onChange={(event) => setReviewForm((previous) => ({
                                   ...previous,
@@ -1644,7 +1817,7 @@ function Account({ wishlist = [], onAddToCart }) {
                                 minLength={10}
                                 maxLength={2000}
                                 rows={5}
-                                placeholder="What stood out about your MAISON experience?"
+                                placeholder={`What stood out about ${activeFeedbackProduct.name || 'this product'}?`}
                                 required
                               />
                               <small>

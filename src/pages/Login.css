@@ -301,3 +301,27 @@
     flex-wrap: wrap;
   }
 }
+.password-input-wrapper {
+  position: relative;
+}
+
+.password-input-wrapper input {
+  flex: 1;
+  min-width: 0;
+}
+
+.password-toggle-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 5px;
+  border: none;
+  background: transparent;
+  color: #777;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.password-toggle-button:hover {
+  color: #172B4D;
+}

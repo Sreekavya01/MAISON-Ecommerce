@@ -163,6 +163,67 @@
   margin: 0;
 }
 
+.abandoned-table-tools {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.abandoned-refresh-button {
+  height: 40px;
+  padding: 0 15px;
+  border: 1px solid #172B4D;
+  border-radius: 7px;
+  background: #172B4D;
+  color: #FFFFFF;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  box-shadow: 0 4px 10px rgba(23, 43, 77, 0.14);
+  transition:
+    background 0.2s ease,
+    border-color 0.2s ease,
+    box-shadow 0.2s ease,
+    transform 0.2s ease;
+}
+
+.abandoned-refresh-button:hover:not(:disabled) {
+  background: #C6A15B;
+  border-color: #C6A15B;
+  box-shadow: 0 6px 14px rgba(181, 139, 67, 0.22);
+  transform: translateY(-1px);
+}
+
+.abandoned-refresh-button:focus-visible {
+  outline: 2px solid #C6A15B;
+  outline-offset: 3px;
+}
+
+.abandoned-refresh-button:disabled {
+  opacity: 0.58;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.abandoned-refreshing {
+  animation: abandonedRefreshSpin 0.8s linear infinite;
+}
+
+@keyframes abandonedRefreshSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .abandoned-search {
   width: 235px;
   height: 40px;
@@ -552,7 +613,15 @@
   }
 
   .abandoned-search {
+    width: auto;
+    flex: 1;
+    min-width: 180px;
+  }
+
+  .abandoned-table-tools {
     width: 100%;
+    justify-content: stretch;
+    flex-wrap: wrap;
   }
 
   .abandoned-table-footer {
