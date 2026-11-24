@@ -23,6 +23,7 @@ import {
   doc,
   getDoc,
   serverTimestamp,
+  setDoc,
   writeBatch,
 } from 'firebase/firestore';
 
@@ -79,10 +80,15 @@ function Login() {
 
     // Never change an existing admin account.
     if (existingData.role === 'admin') {
-      return {
-        ...existingData,
-        role: 'admin',
-      };
+      return existingData;
+    }
+
+    // Do not automatically change another existing role.
+    if (
+      existingData.role &&
+      existingData.role !== 'customer'
+    ) {
+      return existingData;
     }
 
     const customerName =
@@ -99,26 +105,31 @@ function Login() {
       !existingData.role ||
       !existingData.createdAt;
 
-    if (profileNeedsRepair) {
-      const userData = {
-        name: customerName,
-        email: user.email || existingData.email || '',
-        role: 'customer',
-        createdAt:
-          existingData.createdAt || serverTimestamp(),
-      };
+    if (!profileNeedsRepair) {
+      return existingData;
+    }
 
-      const batch = writeBatch(db);
+    const userData = {
+      name: customerName,
+      email: user.email || existingData.email || '',
+      role: 'customer',
+      createdAt:
+        existingData.createdAt || serverTimestamp(),
+    };
 
-      batch.set(userRef, userData, { merge: true });
+    // STEP 1: SAVE CUSTOMER PROFILE FIRST
+    await setDoc(userRef, userData, { merge: true });
 
-      // Notify admin only when creating or repairing
-      // a profile that previously had no customer role.
-      if (
-        !userSnapshot.exists() ||
-        !existingData.role
-      ) {
-        addAdminNotificationWrite(batch, {
+    // STEP 2: CREATE ADMIN NOTIFICATION SEPARATELY
+    // A notification failure will not affect the customer profile.
+    if (
+      !userSnapshot.exists() ||
+      !existingData.role
+    ) {
+      try {
+        const notificationBatch = writeBatch(db);
+
+        addAdminNotificationWrite(notificationBatch, {
           id: adminNotificationIds.customer(user.uid),
           type: ADMIN_NOTIFICATION_TYPES.CUSTOMER_REGISTERED,
           message: `${customerName} created a MAISON customer account.`,
@@ -126,17 +137,21 @@ function Login() {
           sourceCollection: 'users',
           targetPage: '/admin-customers',
         });
+
+        await notificationBatch.commit();
+
+      } catch (notificationError) {
+        console.error(
+          'Customer notification could not be created:',
+          notificationError
+        );
       }
-
-      await batch.commit();
-
-      return {
-        ...existingData,
-        ...userData,
-      };
     }
 
-    return existingData;
+    return {
+      ...existingData,
+      ...userData,
+    };
   };
 
   // REDIRECT USER BASED ON FIRESTORE ROLE
@@ -190,6 +205,8 @@ function Login() {
           'An account already exists with this email. Please use your original login method.',
         'auth/network-request-failed':
           'Network error. Please check your internet connection.',
+        'permission-denied':
+          'Unable to save your customer profile. Please check Firebase permissions.',
       };
 
       toast.error(
@@ -234,10 +251,7 @@ function Login() {
 
         const user = userCredential.user;
 
-        await ensureUserProfile(
-          user,
-          formData.name
-        );
+        await ensureUserProfile(user, formData.name);
 
         toast.success('Account created successfully!');
 
