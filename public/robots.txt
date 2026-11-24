@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+# The sitemap URL is added by `npm run generate:sitemap` after deployment is configured.

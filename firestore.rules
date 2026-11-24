@@ -1,0 +1,1088 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // AUTHENTICATION
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // CUSTOMER OWNERSHIP
+    function isOwner(userId) {
+      return isSignedIn()
+        && request.auth.uid == userId;
+    }
+
+    // ADMIN ROLE
+    function isAdmin() {
+      return isSignedIn()
+        && exists(
+          /databases/$(database)/documents/users/$(request.auth.uid)
+        )
+        && get(
+          /databases/$(database)/documents/users/$(request.auth.uid)
+        ).data.role == 'admin';
+    }
+
+    // CUSTOMER ORDER CANCELLATION
+    function canCustomerCancelOrder() {
+      return isSignedIn()
+        && resource.data.userId == request.auth.uid
+        && resource.data.orderStatus in [
+          'Order Placed',
+          'Order Confirmed',
+          'Processing'
+        ]
+        && request.resource.data.diff(resource.data)
+          .affectedKeys()
+          .hasOnly([
+            'orderStatus',
+            'cancellationReason',
+            'cancelledAt',
+            'updatedAt'
+          ])
+        && request.resource.data.orderStatus == 'Cancelled'
+        && request.resource.data.cancellationReason in [
+          'Ordered by mistake',
+          'Found a better price',
+          'Delivery taking too long',
+          'Want to change the product',
+          'Ordered the wrong product',
+          'Other'
+        ]
+        && request.resource.data.cancelledAt == request.time
+        && request.resource.data.updatedAt == request.time;
+    }
+
+    // SPARK-PLAN ADMIN NOTIFICATIONS
+    // Customer writes create their notification in the same batch or
+    // transaction as the related source record. getAfter() lets the rules
+    // validate that source write without trusting notification text alone.
+    function hasValidNotificationShape() {
+      let notification = request.resource.data;
+
+      return notification.keys().hasAll([
+          'type',
+          'title',
+          'message',
+          'relatedDocumentId',
+          'sourceCollection',
+          'targetPage',
+          'isRead',
+          'readAt',
+          'createdAt'
+        ])
+        && notification.keys().hasOnly([
+          'type',
+          'title',
+          'message',
+          'relatedDocumentId',
+          'sourceCollection',
+          'targetPage',
+          'isRead',
+          'readAt',
+          'createdAt'
+        ])
+        && notification.type is string
+        && notification.title is string
+        && notification.message is string
+        && notification.message.size() > 0
+        && notification.message.size() <= 500
+        && notification.relatedDocumentId is string
+        && notification.relatedDocumentId.size() > 0
+        && notification.sourceCollection is string
+        && notification.targetPage is string
+        && notification.isRead == false
+        && notification.readAt == null
+        && notification.createdAt == request.time;
+    }
+
+    function matchesNotification(type, title, sourceCollection, targetPage) {
+      let notification = request.resource.data;
+
+      return notification.type == type
+        && notification.title == title
+        && notification.sourceCollection == sourceCollection
+        && notification.targetPage == targetPage;
+    }
+
+    function isValidOrderNotification(notificationId) {
+      let notification = request.resource.data;
+      let orderPath = /databases/$(database)/documents/orders/$(notification.relatedDocumentId);
+
+      return notificationId == 'order_' + notification.relatedDocumentId
+        && matchesNotification(
+          'order_placed',
+          'New Order Received',
+          'orders',
+          '/admin-orders'
+        )
+        && isSignedIn()
+        && existsAfter(orderPath)
+        && getAfter(orderPath).data.userId == request.auth.uid
+        && getAfter(orderPath).data.createdAt == request.time;
+    }
+
+    function isValidOrderCancellationNotification(notificationId) {
+      let notification = request.resource.data;
+      let orderPath = /databases/$(database)/documents/orders/$(notification.relatedDocumentId);
+
+      return notificationId == 'order_cancelled_'
+          + notification.relatedDocumentId
+        && matchesNotification(
+          'order_cancelled',
+          'Order Cancelled',
+          'orders',
+          '/admin-orders'
+        )
+        && isSignedIn()
+        && exists(orderPath)
+        && existsAfter(orderPath)
+        && get(orderPath).data.userId == request.auth.uid
+        && get(orderPath).data.orderStatus in [
+          'Order Placed',
+          'Order Confirmed',
+          'Processing'
+        ]
+        && getAfter(orderPath).data.orderStatus == 'Cancelled'
+        && getAfter(orderPath).data.cancellationReason in [
+          'Ordered by mistake',
+          'Found a better price',
+          'Delivery taking too long',
+          'Want to change the product',
+          'Ordered the wrong product',
+          'Other'
+        ]
+        && getAfter(orderPath).data.cancelledAt == request.time
+        && getAfter(orderPath).data.updatedAt == request.time;
+    }
+
+    function isValidCustomerNotification(notificationId) {
+      let notification = request.resource.data;
+      let userPath = /databases/$(database)/documents/users/$(notification.relatedDocumentId);
+
+      return notificationId == 'customer_' + notification.relatedDocumentId
+        && matchesNotification(
+          'customer_registered',
+          'New Customer',
+          'users',
+          '/admin-customers'
+        )
+        && isSignedIn()
+        && notification.relatedDocumentId == request.auth.uid
+        && existsAfter(userPath)
+        && getAfter(userPath).data.role == 'customer'
+        && getAfter(userPath).data.createdAt == request.time;
+    }
+
+    function isValidQuotationNotification(notificationId) {
+      let notification = request.resource.data;
+      let quotationPath = /databases/$(database)/documents/quotationRequests/$(notification.relatedDocumentId);
+
+      return notificationId == 'quotation_' + notification.relatedDocumentId
+        && matchesNotification(
+          'quotation_requested',
+          'New Quotation Request',
+          'quotationRequests',
+          '/admin-quotations'
+        )
+        && existsAfter(quotationPath)
+        && getAfter(quotationPath).data.createdAt == request.time;
+    }
+
+    function isValidBulkOrderNotification(notificationId) {
+      let notification = request.resource.data;
+      let bulkPath = /databases/$(database)/documents/bulkOrderRequests/$(notification.relatedDocumentId);
+
+      return notificationId == 'bulk_' + notification.relatedDocumentId
+        && matchesNotification(
+          'bulk_order_requested',
+          'New Bulk Order',
+          'bulkOrderRequests',
+          '/admin-quotations'
+        )
+        && existsAfter(bulkPath)
+        && getAfter(bulkPath).data.createdAt == request.time;
+    }
+
+    function isValidReturnNotification(notificationId) {
+      let notification = request.resource.data;
+      let returnPath = /databases/$(database)/documents/returnRequests/$(notification.relatedDocumentId);
+
+      return notificationId == 'return_' + notification.relatedDocumentId
+        && matchesNotification(
+          'return_requested',
+          'New Return Request',
+          'returnRequests',
+          '/admin-return-requests'
+        )
+        && isSignedIn()
+        && existsAfter(returnPath)
+        && getAfter(returnPath).data.userId == request.auth.uid
+        && getAfter(returnPath).data.createdAt == request.time;
+    }
+
+    function isValidContactNotification(notificationId) {
+      let notification = request.resource.data;
+      let contactPath = /databases/$(database)/documents/contactMessages/$(notification.relatedDocumentId);
+
+      return notificationId == 'contact_' + notification.relatedDocumentId
+        && matchesNotification(
+          'contact_message',
+          'New Contact Message',
+          'contactMessages',
+          '/admin-contact-messages'
+        )
+        && existsAfter(contactPath)
+        && getAfter(contactPath).data.createdAt == request.time;
+    }
+
+    function isValidCustomerReviewNotification(notificationId) {
+      let notification = request.resource.data;
+      let reviewPath = /databases/$(database)/documents/customerReviews/$(notification.relatedDocumentId);
+
+      return notificationId == 'review_' + notification.relatedDocumentId
+        && matchesNotification(
+          'customer_review',
+          'New Customer Review',
+          'customerReviews',
+          '/admin-customer-reviews'
+        )
+        && isSignedIn()
+        && existsAfter(reviewPath)
+        && getAfter(reviewPath).data.userId == request.auth.uid
+        && getAfter(reviewPath).data.rating >= 1
+        && getAfter(reviewPath).data.rating <= 5
+        && getAfter(reviewPath).data.createdAt == request.time;
+    }
+
+    function hasMatchingCustomerReviewNotification(reviewId) {
+      let notificationId = 'review_' + reviewId;
+      let notificationPath = /databases/$(database)/documents/adminNotifications/$(notificationId);
+
+      return existsAfter(notificationPath)
+        && getAfter(notificationPath).data.type == 'customer_review'
+        && getAfter(notificationPath).data.title == 'New Customer Review'
+        && getAfter(notificationPath).data.relatedDocumentId == reviewId
+        && getAfter(notificationPath).data.sourceCollection == 'customerReviews'
+        && getAfter(notificationPath).data.targetPage == '/admin-customer-reviews'
+        && getAfter(notificationPath).data.isRead == false
+        && getAfter(notificationPath).data.createdAt == request.time;
+    }
+
+    function isValidNormalQuotationDecisionNotification(notificationId) {
+      let notification = request.resource.data;
+      let quotationPath = /databases/$(database)/documents/quotationRequests/$(notification.relatedDocumentId);
+      let decision = notification.type == 'quotation_accepted'
+        ? 'accepted'
+        : 'rejected';
+
+      return notificationId == 'quotation_decision_quotationRequests_'
+          + notification.relatedDocumentId + '_' + decision
+        && notification.sourceCollection == 'quotationRequests'
+        && existsAfter(quotationPath)
+        && getAfter(quotationPath).data.userId == request.auth.uid
+        && getAfter(quotationPath).data.customerDecision == decision
+        && getAfter(quotationPath).data.customerDecisionBy == request.auth.uid
+        && getAfter(quotationPath).data.customerDecisionAt == request.time;
+    }
+
+    function isValidBulkQuotationDecisionNotification(notificationId) {
+      let notification = request.resource.data;
+      let bulkPath = /databases/$(database)/documents/bulkOrderRequests/$(notification.relatedDocumentId);
+      let decision = notification.type == 'quotation_accepted'
+        ? 'accepted'
+        : 'rejected';
+
+      return notificationId == 'quotation_decision_bulkOrderRequests_'
+          + notification.relatedDocumentId + '_' + decision
+        && notification.sourceCollection == 'bulkOrderRequests'
+        && existsAfter(bulkPath)
+        && getAfter(bulkPath).data.userId == request.auth.uid
+        && getAfter(bulkPath).data.customerDecision == decision
+        && getAfter(bulkPath).data.customerDecisionBy == request.auth.uid
+        && getAfter(bulkPath).data.customerDecisionAt == request.time;
+    }
+
+    function isValidQuotationDecisionNotification(notificationId) {
+      let notification = request.resource.data;
+      let accepted = notification.type == 'quotation_accepted';
+
+      return isSignedIn()
+        && (
+          (
+            accepted
+            && matchesNotification(
+              'quotation_accepted',
+              'Quotation Accepted',
+              notification.sourceCollection,
+              '/admin-quotations'
+            )
+          )
+          || (
+            !accepted
+            && notification.type == 'quotation_rejected'
+            && matchesNotification(
+              'quotation_rejected',
+              'Quotation Rejected',
+              notification.sourceCollection,
+              '/admin-quotations'
+            )
+          )
+        )
+        && (
+          isValidNormalQuotationDecisionNotification(notificationId)
+          || isValidBulkQuotationDecisionNotification(notificationId)
+        );
+    }
+
+    function isValidNotificationCreate(notificationId) {
+      return hasValidNotificationShape()
+        && (
+          isValidOrderNotification(notificationId)
+          || isValidOrderCancellationNotification(notificationId)
+          || isValidCustomerNotification(notificationId)
+          || isValidQuotationNotification(notificationId)
+          || isValidBulkOrderNotification(notificationId)
+          || isValidReturnNotification(notificationId)
+          || isValidContactNotification(notificationId)
+          || isValidCustomerReviewNotification(notificationId)
+          || isValidQuotationDecisionNotification(notificationId)
+        );
+    }
+
+    // CUSTOMER QUOTATION RESPONSE
+    function canCustomerRespondToQuotation() {
+      return isSignedIn()
+        && resource.data.userId == request.auth.uid
+        && resource.data.status == 'approved'
+
+        && (
+          !('customerDecision' in resource.data)
+          || resource.data.customerDecision == null
+          || resource.data.customerDecision == 'pending'
+        )
+
+        && request.resource.data.diff(resource.data)
+          .affectedKeys()
+          .hasOnly([
+            'customerDecision',
+            'customerDecisionBy',
+            'customerDecisionAt',
+            'createdOrderId',
+            'acceptedOrderTotal',
+            'orderCreatedAt',
+            'updatedAt'
+          ])
+
+        && request.resource.data.customerDecision in [
+          'accepted',
+          'rejected'
+        ]
+
+        && request.resource.data.customerDecisionBy == request.auth.uid
+        && request.resource.data.customerDecisionAt == request.time
+        && request.resource.data.updatedAt == request.time
+
+        && (
+          (
+            request.resource.data.customerDecision == 'rejected'
+            && (
+              !('createdOrderId' in request.resource.data)
+              || request.resource.data.createdOrderId == null
+            )
+          )
+          ||
+          (
+            request.resource.data.customerDecision == 'accepted'
+            && request.resource.data.createdOrderId is string
+            && request.resource.data.acceptedOrderTotal is number
+            && request.resource.data.orderCreatedAt == request.time
+          )
+        );
+    }
+
+    // CUSTOMER QUOTATION CHECKOUT
+    function canCompleteQuotationCheckout() {
+      return isSignedIn()
+        && resource.data.userId == request.auth.uid
+        && resource.data.source == 'quotation'
+
+        // Checkout can happen only once.
+        && !('checkoutCompletedAt' in resource.data)
+
+        // Only checkout-related fields can change.
+        && request.resource.data.diff(resource.data)
+          .affectedKeys()
+          .hasOnly([
+            'customer',
+            'paymentMethod',
+            'paymentStatus',
+            'invoice',
+            'trackingHistory',
+            'checkoutCompletedAt',
+            'updatedAt'
+          ])
+
+        && request.resource.data.customer is map
+
+        && request.resource.data.paymentMethod in [
+          'UPI Payment',
+          'Credit / Debit Card',
+          'Net Banking',
+          'Cash on Delivery'
+        ]
+
+        && request.resource.data.paymentStatus in [
+          'Paid',
+          'Due on delivery'
+        ]
+
+        && request.resource.data.invoice is map
+        && request.resource.data.trackingHistory is list
+        && request.resource.data.checkoutCompletedAt == request.time
+        && request.resource.data.updatedAt == request.time;
+    }
+
+    // USER PROFILES
+    match /users/{userId} {
+      allow get: if isOwner(userId) || isAdmin();
+      allow list: if isAdmin();
+
+      allow create: if isOwner(userId)
+        && request.resource.data.role == 'customer'
+        && request.resource.data.email == request.auth.token.email;
+
+      allow update: if isAdmin()
+        || (
+          isOwner(userId)
+          && request.resource.data.diff(resource.data)
+            .affectedKeys()
+            .hasOnly(['name', 'phone'])
+        );
+
+      allow delete: if isAdmin();
+
+      // CUSTOMER ADDRESSES
+      match /addresses/{addressId} {
+        allow read, write: if isOwner(userId) || isAdmin();
+      }
+
+      // CUSTOMER CART
+      match /cart/{productId} {
+        allow read, write: if isOwner(userId) || isAdmin();
+      }
+
+      // CUSTOMER WISHLIST
+      match /wishlist/{productId} {
+        allow read, write: if isOwner(userId) || isAdmin();
+      }
+
+      // CUSTOMER RECENTLY VIEWED PRODUCTS
+      match /recentlyViewed/{productId} {
+        allow read, write: if isOwner(userId) || isAdmin();
+      }
+    }
+
+    // PRODUCTS
+    match /products/{productId} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    // CUSTOMER ORDERS
+    match /orders/{orderId} {
+      allow get: if isAdmin()
+        || (
+          isSignedIn()
+          && resource.data.userId == request.auth.uid
+        );
+
+      allow list: if isAdmin()
+        || (
+          isSignedIn()
+          && resource.data.userId == request.auth.uid
+        );
+
+      allow create: if isSignedIn()
+        && !exists(
+          /databases/$(database)/documents/orders/$(orderId)
+        )
+        && request.resource.data.userId == request.auth.uid;
+
+      allow update: if isAdmin()
+        || canCompleteQuotationCheckout()
+        || canCustomerCancelOrder();
+
+      allow delete: if isAdmin();
+    }
+
+    // VERIFIED CUSTOMER ORDER REVIEWS
+    match /customerReviews/{orderId} {
+      allow get: if resource.data.status == 'published'
+        || isAdmin()
+        || (
+          isSignedIn()
+          && resource.data.userId == request.auth.uid
+        );
+
+      allow list: if resource.data.status == 'published'
+        || isAdmin()
+        || (
+          isSignedIn()
+          && resource.data.userId == request.auth.uid
+        );
+
+      allow create: if isSignedIn()
+        && !exists(
+          /databases/$(database)/documents/customerReviews/$(orderId)
+        )
+        && hasMatchingCustomerReviewNotification(orderId)
+        && exists(
+          /databases/$(database)/documents/orders/$(orderId)
+        )
+        && get(
+          /databases/$(database)/documents/orders/$(orderId)
+        ).data.userId == request.auth.uid
+        && get(
+          /databases/$(database)/documents/orders/$(orderId)
+        ).data.orderStatus == 'Delivered'
+
+        && request.resource.data.keys().hasAll([
+          'userId',
+          'orderId',
+          'orderReference',
+          'customerName',
+          'customerEmail',
+          'productSummary',
+          'products',
+          'orderTotal',
+          'rating',
+          'review',
+          'status',
+          'createdAt',
+          'updatedAt'
+        ])
+
+        && request.resource.data.keys().hasOnly([
+          'userId',
+          'orderId',
+          'orderReference',
+          'customerName',
+          'customerEmail',
+          'productSummary',
+          'products',
+          'orderTotal',
+          'rating',
+          'review',
+          'status',
+          'createdAt',
+          'updatedAt'
+        ])
+
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.orderId == orderId
+        && request.resource.data.orderReference
+          == get(
+            /databases/$(database)/documents/orders/$(orderId)
+          ).data.orderId
+        && request.resource.data.customerName is string
+        && request.resource.data.customerName.size() > 0
+        && request.resource.data.customerName.size() <= 150
+        && request.resource.data.customerEmail is string
+        && request.resource.data.customerEmail == request.auth.token.email
+        && request.resource.data.customerEmail.size() <= 320
+        && request.resource.data.productSummary is string
+        && request.resource.data.productSummary.size() <= 500
+        && request.resource.data.products is list
+        && request.resource.data.products.size() > 0
+        && request.resource.data.products.size() <= 100
+        && request.resource.data.products
+          == get(
+            /databases/$(database)/documents/orders/$(orderId)
+          ).data.products
+        && request.resource.data.orderTotal is number
+        && request.resource.data.orderTotal
+          == get(
+            /databases/$(database)/documents/orders/$(orderId)
+          ).data.total
+        && request.resource.data.rating is int
+        && request.resource.data.rating >= 1
+        && request.resource.data.rating <= 5
+        && request.resource.data.review is string
+        && request.resource.data.review.size() >= 10
+        && request.resource.data.review.size() <= 2000
+        && request.resource.data.status == 'pending'
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time;
+
+      allow update, delete: if isAdmin();
+    }
+
+    // Backend-only email queue. Cloud Functions uses the Admin SDK and
+    // bypasses client rules; storefront customers cannot access this data.
+    match /feedbackEmailQueue/{queueId} {
+      allow read, write: if isAdmin();
+    }
+
+    // RETURN AND REPLACEMENT REQUESTS
+    match /returnRequests/{requestId} {
+      allow get, list: if isAdmin()
+        || (
+          isSignedIn()
+          && resource.data.userId == request.auth.uid
+        );
+
+      allow create: if isSignedIn()
+        && request.resource.data.userId == request.auth.uid
+
+        && request.resource.data.keys().hasAll([
+          'userId',
+          'customerName',
+          'customerEmail',
+          'customerPhone',
+          'orderId',
+          'orderReference',
+          'product',
+          'reason',
+          'requestType',
+          'comments',
+          'status',
+          'trackingHistory',
+          'createdAt',
+          'updatedAt'
+        ])
+
+        && request.resource.data.keys().hasOnly([
+          'userId',
+          'customerName',
+          'customerEmail',
+          'customerPhone',
+          'orderId',
+          'orderReference',
+          'product',
+          'reason',
+          'requestType',
+          'comments',
+          'status',
+          'trackingHistory',
+          'createdAt',
+          'updatedAt'
+        ])
+
+        && request.resource.data.orderId is string
+        && exists(
+          /databases/$(database)/documents/orders/$(request.resource.data.orderId)
+        )
+        && get(
+          /databases/$(database)/documents/orders/$(request.resource.data.orderId)
+        ).data.userId == request.auth.uid
+        && get(
+          /databases/$(database)/documents/orders/$(request.resource.data.orderId)
+        ).data.orderStatus == 'Delivered'
+
+        && request.resource.data.customerName is string
+        && request.resource.data.customerEmail is string
+        && request.resource.data.customerPhone is string
+        && request.resource.data.orderReference is string
+        && request.resource.data.product is map
+
+        && request.resource.data.product.keys().hasAll([
+          'id',
+          'name',
+          'image',
+          'price',
+          'quantity',
+          'selectedColor',
+          'selectedSize'
+        ])
+
+        && request.resource.data.product.keys().hasOnly([
+          'id',
+          'name',
+          'image',
+          'price',
+          'quantity',
+          'selectedColor',
+          'selectedSize'
+        ])
+
+        && request.resource.data.product.name is string
+        && request.resource.data.product.price is number
+        && request.resource.data.product.quantity is number
+
+        && request.resource.data.reason in [
+          'Product damaged',
+          'Product defective',
+          'Wrong product received',
+          'Wrong size received',
+          'Missing parts or accessories',
+          'Product does not match description',
+          'Other'
+        ]
+
+        && request.resource.data.requestType in [
+          'Refund',
+          'Return',
+          'Replacement'
+        ]
+
+        && request.resource.data.comments is string
+        && request.resource.data.comments.size() <= 1000
+        && request.resource.data.status == 'Return Requested'
+        && request.resource.data.trackingHistory is list
+        && request.resource.data.trackingHistory.size() == 1
+        && request.resource.data.trackingHistory[0] is map
+        && request.resource.data.trackingHistory[0].keys().hasAll([
+          'status',
+          'date',
+          'description'
+        ])
+        && request.resource.data.trackingHistory[0].keys().hasOnly([
+          'status',
+          'date',
+          'description'
+        ])
+        && request.resource.data.trackingHistory[0].date is string
+        && request.resource.data.trackingHistory[0].description is string
+        && (
+          (
+            request.resource.data.requestType == 'Replacement'
+            && request.resource.data.trackingHistory[0].status
+              == 'Replacement Requested'
+          )
+          || (
+            request.resource.data.requestType in ['Refund', 'Return']
+            && request.resource.data.trackingHistory[0].status
+              == 'Return Requested'
+          )
+        )
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time;
+
+      allow update, delete: if isAdmin();
+    }
+
+    // CONTACT MESSAGES
+    match /contactMessages/{messageId} {
+      allow create: if
+        request.resource.data.keys().hasAll([
+          'name',
+          'email',
+          'subject',
+          'message',
+          'supportTopic',
+          'userId',
+          'status',
+          'createdAt'
+        ])
+
+        && request.resource.data.keys().hasOnly([
+          'name',
+          'email',
+          'subject',
+          'message',
+          'supportTopic',
+          'userId',
+          'status',
+          'createdAt'
+        ])
+
+        && request.resource.data.name is string
+        && request.resource.data.email is string
+        && request.resource.data.subject is string
+        && request.resource.data.message is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.name.size() <= 100
+        && request.resource.data.email.size() > 0
+        && request.resource.data.email.size() <= 150
+        && request.resource.data.subject.size() > 0
+        && request.resource.data.subject.size() <= 150
+        && request.resource.data.message.size() > 0
+        && request.resource.data.message.size() <= 3000
+
+        && (
+          request.resource.data.supportTopic == null
+          || request.resource.data.supportTopic is string
+        )
+
+        && request.resource.data.status == 'Unread'
+        && request.resource.data.createdAt == request.time
+
+        && (
+          request.resource.data.userId == null
+          || (
+            isSignedIn()
+            && request.resource.data.userId == request.auth.uid
+          )
+        );
+
+      allow read, update, delete: if isAdmin();
+    }
+
+    // NORMAL QUOTATION REQUESTS
+    match /quotationRequests/{requestId} {
+      allow create: if
+        request.resource.data.keys().hasAll([
+          'customerName',
+          'customerEmail',
+          'customerPhone',
+          'company',
+          'message',
+          'userId',
+          'productId',
+          'productName',
+          'productCategory',
+          'productImage',
+          'unitPrice',
+          'quantity',
+          'subtotal',
+          'estimatedDiscountPercent',
+          'estimatedDiscountAmount',
+          'estimatedTotal',
+          'finalUnitPrice',
+          'finalDiscountPercent',
+          'finalSubtotal',
+          'finalDiscountAmount',
+          'finalTotal',
+          'adminNotes',
+          'status',
+          'customerDecision',
+          'createdOrderId',
+          'source',
+          'createdAt',
+          'updatedAt'
+        ])
+
+        && request.resource.data.keys().hasOnly([
+          'customerName',
+          'customerEmail',
+          'customerPhone',
+          'company',
+          'message',
+          'userId',
+          'productId',
+          'productName',
+          'productCategory',
+          'productImage',
+          'unitPrice',
+          'quantity',
+          'subtotal',
+          'estimatedDiscountPercent',
+          'estimatedDiscountAmount',
+          'estimatedTotal',
+          'finalUnitPrice',
+          'finalDiscountPercent',
+          'finalSubtotal',
+          'finalDiscountAmount',
+          'finalTotal',
+          'adminNotes',
+          'status',
+          'customerDecision',
+          'createdOrderId',
+          'source',
+          'createdAt',
+          'updatedAt'
+        ])
+
+        && request.resource.data.customerName is string
+        && request.resource.data.customerName.size() > 0
+        && request.resource.data.customerEmail is string
+        && request.resource.data.customerEmail.size() > 0
+        && request.resource.data.customerPhone is string
+        && request.resource.data.customerPhone.size() == 10
+
+        && (
+          request.resource.data.company == null
+          || request.resource.data.company is string
+        )
+
+        && (
+          request.resource.data.message == null
+          || request.resource.data.message is string
+        )
+
+        && (
+          request.resource.data.userId == null
+          || (
+            isSignedIn()
+            && request.resource.data.userId == request.auth.uid
+          )
+        )
+
+        && request.resource.data.productId is string
+        && request.resource.data.productName is string
+
+        && (
+          request.resource.data.productCategory == null
+          || request.resource.data.productCategory is string
+        )
+
+        && (
+          request.resource.data.productImage == null
+          || request.resource.data.productImage is string
+        )
+
+        && request.resource.data.unitPrice is number
+        && request.resource.data.quantity is int
+        && request.resource.data.quantity >= 1
+        && request.resource.data.subtotal is number
+        && request.resource.data.estimatedDiscountPercent is number
+        && request.resource.data.estimatedDiscountAmount is number
+        && request.resource.data.estimatedTotal is number
+        && request.resource.data.finalUnitPrice == null
+        && request.resource.data.finalDiscountPercent == null
+        && request.resource.data.finalSubtotal == null
+        && request.resource.data.finalDiscountAmount == null
+        && request.resource.data.finalTotal == null
+        && request.resource.data.adminNotes == ''
+        && request.resource.data.status == 'pending'
+        && request.resource.data.customerDecision == 'pending'
+        && request.resource.data.createdOrderId == null
+        && request.resource.data.source == 'quotation-page'
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time;
+
+      allow get, list: if isAdmin()
+        || (
+          isSignedIn()
+          && resource.data.userId == request.auth.uid
+        );
+
+      allow update: if isAdmin()
+        || canCustomerRespondToQuotation();
+
+      allow delete: if isAdmin();
+    }
+
+    // BULK ORDER REQUESTS
+    match /bulkOrderRequests/{requestId} {
+      allow create: if
+        request.resource.data.keys().hasAll([
+          'customer',
+          'products',
+          'totalQuantity',
+          'estimatedRegularTotal',
+          'source',
+          'status',
+          'customerDecision',
+          'createdOrderId',
+          'userId',
+          'createdAt',
+          'updatedAt'
+        ])
+
+        && request.resource.data.keys().hasOnly([
+          'customer',
+          'products',
+          'totalQuantity',
+          'estimatedRegularTotal',
+          'source',
+          'status',
+          'customerDecision',
+          'createdOrderId',
+          'userId',
+          'createdAt',
+          'updatedAt'
+        ])
+
+        && request.resource.data.customer is map
+        && request.resource.data.customer.keys().hasAll([
+          'name',
+          'email',
+          'phone',
+          'company',
+          'deliveryAddress',
+          'message'
+        ])
+
+        && request.resource.data.customer.keys().hasOnly([
+          'name',
+          'email',
+          'phone',
+          'company',
+          'deliveryAddress',
+          'message'
+        ])
+
+        && request.resource.data.customer.name is string
+        && request.resource.data.customer.name.size() > 0
+        && request.resource.data.customer.email is string
+        && request.resource.data.customer.email.size() > 0
+        && request.resource.data.customer.phone.matches('^[0-9]{10}$')
+        && request.resource.data.customer.deliveryAddress is string
+        && request.resource.data.customer.deliveryAddress.size() > 0
+
+        && (
+          request.resource.data.customer.company == null
+          || request.resource.data.customer.company is string
+        )
+
+        && (
+          request.resource.data.customer.message == null
+          || request.resource.data.customer.message is string
+        )
+
+        && request.resource.data.products is list
+        && request.resource.data.products.size() >= 1
+        && request.resource.data.products.size() <= 20
+        && request.resource.data.totalQuantity is int
+        && request.resource.data.totalQuantity >= 10
+        && request.resource.data.estimatedRegularTotal is number
+        && request.resource.data.estimatedRegularTotal >= 0
+        && request.resource.data.source is string
+        && request.resource.data.source.size() <= 50
+        && request.resource.data.status == 'pending'
+        && request.resource.data.customerDecision == 'pending'
+        && request.resource.data.createdOrderId == null
+
+        && (
+          request.resource.data.userId == null
+          || (
+            isSignedIn()
+            && request.resource.data.userId == request.auth.uid
+          )
+        )
+
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time;
+
+      allow get, list: if isAdmin()
+        || (
+          isSignedIn()
+          && resource.data.userId == request.auth.uid
+        );
+
+      allow update: if isAdmin()
+        || canCustomerRespondToQuotation();
+
+      allow delete: if isAdmin();
+    }
+
+    // ADMIN NOTIFICATIONS
+    // Source-event batches may create validated records. Only administrators
+    // can read, mark as read, or delete them.
+    match /adminNotifications/{notificationId} {
+      allow get, list: if isAdmin();
+
+      allow create: if isValidNotificationCreate(notificationId);
+
+      allow update: if isAdmin()
+        && request.resource.data.diff(resource.data)
+          .affectedKeys()
+          .hasOnly(['isRead', 'readAt'])
+        && request.resource.data.isRead is bool
+        && request.resource.data.isRead == true
+        && request.resource.data.readAt == request.time;
+
+      allow delete: if isAdmin();
+    }
+
+    // DENY COLLECTIONS THAT ARE NOT EXPLICITLY DEFINED ABOVE.
+    // This prevents a broad fallback from overriding the notification rules.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

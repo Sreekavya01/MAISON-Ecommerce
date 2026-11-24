@@ -1,0 +1,813 @@
+.admin-quotes-page {
+  min-height: 100vh;
+  padding: 30px;
+  background: #f8f7f4;
+  color: #172b4d;
+}
+
+.admin-quotes-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 28px;
+}
+
+.admin-quotes-header > div:first-child > span {
+  color: #b18a48;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 2px;
+}
+
+.admin-quotes-header h1 {
+  margin: 8px 0;
+  color: #172b4d;
+  font-family: 'Playfair Display', serif;
+  font-size: 32px;
+}
+
+.admin-quotes-header p {
+  margin: 0;
+  color: #7a7a7a;
+  font-size: 14px;
+}
+
+.admin-quotes-header-icon {
+  display: flex;
+  width: 58px;
+  height: 58px;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: 14px;
+  background: #172b4d;
+  color: #d4ae70;
+}
+
+.admin-quotes-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 18px;
+  margin-bottom: 26px;
+}
+
+.admin-quotes-stats article {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 20px;
+  border: 1px solid #eeeae2;
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: 0 3px 12px rgba(23, 43, 77, 0.035);
+}
+
+.quote-stat-icon {
+  display: flex;
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: 11px;
+}
+
+.quote-stat-icon.total {
+  background: #edf1f7;
+  color: #172b4d;
+}
+
+.quote-stat-icon.pending {
+  background: #fff4df;
+  color: #a97726;
+}
+
+.quote-stat-icon.reviewed {
+  background: #eaf1fb;
+  color: #436f9f;
+}
+
+.quote-stat-icon.approved {
+  background: #e8f4ec;
+  color: #39845b;
+}
+
+.admin-quotes-stats span {
+  display: block;
+  margin-bottom: 4px;
+  color: #777777;
+  font-size: 12px;
+}
+
+.admin-quotes-stats strong {
+  color: #172b4d;
+  font-size: 23px;
+}
+
+.admin-quotes-panel {
+  overflow: hidden;
+  border: 1px solid #eeeae2;
+  border-radius: 13px;
+  background: #ffffff;
+  box-shadow: 0 3px 15px rgba(23, 43, 77, 0.035);
+}
+
+.admin-quotes-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 20px;
+  border-bottom: 1px solid #eeeae2;
+}
+
+.admin-quotes-search {
+  display: flex;
+  width: 400px;
+  max-width: 100%;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 14px;
+  border: 1px solid #e6e2d9;
+  border-radius: 8px;
+  color: #8b8b8b;
+  background: #ffffff;
+}
+
+.admin-quotes-search:focus-within,
+.admin-quotes-toolbar select:focus,
+.quote-form-grid input:focus,
+.quote-form-grid select:focus,
+.quote-product-price-field input:focus,
+.quote-admin-notes textarea:focus {
+  border-color: #c6a15b;
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(198, 161, 91, 0.1);
+}
+
+.admin-quotes-search input {
+  width: 100%;
+  border: none;
+  outline: none;
+  color: #172b4d;
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+}
+
+.admin-quotes-toolbar select {
+  min-width: 160px;
+  padding: 11px 34px 11px 13px;
+  border: 1px solid #e6e2d9;
+  border-radius: 8px;
+  color: #465366;
+  background: #ffffff;
+  font: inherit;
+  font-size: 12px;
+}
+
+.admin-quotes-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.admin-quotes-table {
+  width: 100%;
+  min-width: 900px;
+  border-collapse: collapse;
+}
+
+.admin-quotes-table th {
+  padding: 14px 18px;
+  color: #8a8f98;
+  background: #faf9f7;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.7px;
+  text-align: left;
+  text-transform: uppercase;
+}
+
+.admin-quotes-table td {
+  padding: 17px 18px;
+  border-top: 1px solid #f0ede7;
+  color: #39485c;
+  font-size: 12px;
+  vertical-align: middle;
+}
+
+.admin-quotes-table td strong,
+.admin-quotes-table td span {
+  display: block;
+}
+
+.admin-quotes-table td strong {
+  margin-bottom: 5px;
+  color: #172b4d;
+  font-size: 12px;
+}
+
+.admin-quotes-table td > span:not(.quote-status) {
+  color: #858c96;
+  font-size: 10px;
+}
+
+.admin-quotes-table .quote-reference {
+  color: #9b753a;
+  letter-spacing: 0.3px;
+}
+
+.quote-status {
+  display: inline-flex !important;
+  width: fit-content;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: capitalize;
+}
+
+.quote-status.pending {
+  color: #95691f;
+  background: #fff4df;
+}
+
+.quote-status.reviewed {
+  color: #3d6795;
+  background: #eaf1fb;
+}
+
+.quote-status.approved {
+  color: #2e704b;
+  background: #e7f4eb;
+}
+
+.quote-status.rejected {
+  color: #a64848;
+  background: #fbe9e9;
+}
+
+.quote-status.under_review {
+  color: #7a5b1f;
+  background: #f8edcf;
+}
+
+.quote-status.completed {
+  color: #ffffff;
+  background: #172b4d;
+}
+
+.quote-review-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 11px;
+  border: 1px solid #dfe4eb;
+  border-radius: 7px;
+  color: #172b4d;
+  background: #f6f8fb;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: 0.2s ease;
+}
+
+.quote-review-button:hover {
+  border-color: #172b4d;
+  color: #ffffff;
+  background: #172b4d;
+}
+
+.admin-quotes-state {
+  display: flex;
+  min-height: 250px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 40px;
+  color: #8b929c;
+  text-align: center;
+}
+
+.admin-quotes-state.error {
+  color: #a64848;
+}
+
+.admin-quotes-state p {
+  margin: 0;
+  font-size: 13px;
+}
+
+.admin-quotes-spinner {
+  animation: admin-quote-spin 0.8s linear infinite;
+}
+
+@keyframes admin-quote-spin {
+  to { transform: rotate(360deg); }
+}
+
+.quote-modal-backdrop {
+  position: fixed;
+  z-index: 1500;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(10, 22, 40, 0.62);
+  backdrop-filter: blur(3px);
+}
+
+.quote-review-modal {
+  width: min(760px, 100%);
+  max-height: calc(100vh - 48px);
+  overflow: hidden;
+  border-radius: 14px;
+  background: #ffffff;
+  box-shadow: 0 28px 70px rgba(9, 23, 43, 0.26);
+}
+
+.quote-review-modal > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 22px 24px;
+  border-bottom: 1px solid #ece9e2;
+}
+
+.quote-review-modal > header span {
+  color: #b18a48;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1px;
+}
+
+.quote-review-modal h2 {
+  margin: 5px 0 0;
+  color: #172b4d;
+  font-family: 'Playfair Display', serif;
+  font-size: 24px;
+}
+
+.quote-review-modal > header button {
+  display: flex;
+  width: 36px;
+  height: 36px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #e3e5e8;
+  border-radius: 50%;
+  color: #576273;
+  background: #ffffff;
+  cursor: pointer;
+}
+
+.quote-modal-content {
+  max-height: calc(100vh - 145px);
+  overflow-y: auto;
+  padding: 24px;
+}
+
+.quote-details-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.quote-details-grid article {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 17px;
+  border: 1px solid #ebe7df;
+  border-radius: 10px;
+  background: #faf9f7;
+}
+
+.quote-details-grid h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 5px;
+  color: #9b753a;
+  font-size: 11px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.quote-details-grid strong {
+  color: #172b4d;
+  font-size: 13px;
+}
+
+.quote-details-grid span,
+.quote-details-grid a {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #687383;
+  font-size: 11px;
+  text-decoration: none;
+}
+
+.quote-details-grid a:hover {
+  color: #9b753a;
+}
+
+.quote-customer-note {
+  margin-top: 14px;
+  padding: 15px 17px;
+  border-left: 3px solid #c6a15b;
+  background: #fbf7ed;
+}
+
+.quote-customer-note strong {
+  color: #172b4d;
+  font-size: 11px;
+}
+
+.quote-customer-note p {
+  margin: 6px 0 0;
+  color: #667180;
+  font-size: 12px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+}
+
+.quote-pricing-form {
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid #ebe7df;
+}
+
+.quote-pricing-title > div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #b18a48;
+}
+
+.quote-pricing-title h3 {
+  margin: 0;
+  color: #172b4d;
+  font-size: 16px;
+}
+
+.quote-pricing-title p {
+  margin: 6px 0 17px 26px;
+  color: #7a838f;
+  font-size: 11px;
+}
+
+.quote-form-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 13px;
+}
+
+.quote-form-grid label,
+.quote-admin-notes {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  color: #435064;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.quote-form-grid input,
+.quote-form-grid select,
+.quote-admin-notes textarea {
+  width: 100%;
+  padding: 11px 12px;
+  border: 1px solid #dfe2e7;
+  border-radius: 7px;
+  color: #172b4d;
+  background: #ffffff;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.quote-product-pricing {
+  overflow: hidden;
+  border: 1px solid #e4dfd5;
+  border-radius: 10px;
+  background: #ffffff;
+}
+
+.quote-product-pricing-header,
+.quote-product-pricing-row {
+  display: grid;
+  grid-template-columns: minmax(190px, 1.8fr) 0.7fr 1fr 1fr;
+  gap: 14px;
+  align-items: center;
+}
+
+.quote-product-pricing-header {
+  padding: 11px 14px;
+  color: #e8d7b8;
+  background: #172b4d;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.65px;
+  text-transform: uppercase;
+}
+
+.quote-product-pricing-row {
+  padding: 14px;
+  border-bottom: 1px solid #eee9df;
+}
+
+.quote-product-pricing-row:last-child {
+  border-bottom: none;
+}
+
+.quote-product-pricing-info,
+.quote-product-pricing-value,
+.quote-product-price-field {
+  min-width: 0;
+}
+
+.quote-product-pricing-info strong,
+.quote-product-pricing-info span,
+.quote-product-pricing-value strong,
+.quote-product-pricing-value span,
+.quote-product-pricing-value small,
+.quote-product-price-field span,
+.quote-product-price-field small {
+  display: block;
+}
+
+.quote-product-pricing-info strong {
+  overflow: hidden;
+  color: #172b4d;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.quote-product-pricing-info span {
+  margin-top: 4px;
+  color: #8a9098;
+  font-size: 9px;
+}
+
+.quote-product-pricing-value > span {
+  display: none;
+}
+
+.quote-product-pricing-value strong {
+  color: #435064;
+  font-size: 11px;
+}
+
+.quote-product-pricing-value small,
+.quote-product-price-field small {
+  margin-top: 4px;
+  color: #9298a1;
+  font-size: 9px;
+}
+
+.quote-product-price-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  color: #435064;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.quote-product-price-field > span {
+  display: none;
+}
+
+.quote-product-price-field input {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  padding: 10px 11px;
+  border: 1px solid #d8dce2;
+  border-radius: 7px;
+  color: #172b4d;
+  background: #fffdf8;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.quote-bulk-status-grid {
+  margin-top: 14px;
+}
+
+.quote-final-summary {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  margin: 17px 0;
+  border: 1px solid #e7e3dc;
+  border-radius: 9px;
+  background: #f8f7f4;
+}
+
+.quote-final-summary > div {
+  padding: 14px;
+  border-right: 1px solid #e7e3dc;
+}
+
+.quote-final-summary > div:last-child {
+  border-right: none;
+}
+
+.quote-final-summary span,
+.quote-final-summary strong {
+  display: block;
+}
+
+.quote-final-summary span {
+  margin-bottom: 5px;
+  color: #7d858f;
+  font-size: 10px;
+}
+
+.quote-final-summary strong {
+  color: #172b4d;
+  font-size: 14px;
+}
+
+.quote-final-summary .quote-final-total strong {
+  color: #9b753a;
+}
+
+.quote-admin-notes textarea {
+  resize: vertical;
+}
+
+.quote-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.quote-modal-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-width: 112px;
+  padding: 11px 16px;
+  border-radius: 7px;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.quote-modal-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+.quote-cancel-button {
+  border: 1px solid #dfe2e7;
+  color: #596575;
+  background: #ffffff;
+}
+
+.quote-save-button {
+  border: 1px solid #172b4d;
+  color: #ffffff;
+  background: #172b4d;
+}
+
+.quote-save-button:hover:not(:disabled) {
+  border-color: #c6a15b;
+  color: #172b4d;
+  background: #c6a15b;
+}
+
+@media (max-width: 1050px) {
+  .admin-quotes-stats {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 700px) {
+  .admin-quotes-page {
+    padding: 20px 14px;
+  }
+
+  .admin-quotes-header-icon {
+    display: none;
+  }
+
+  .admin-quotes-header h1 {
+    font-size: 27px;
+  }
+
+  .admin-quotes-stats {
+    gap: 10px;
+  }
+
+  .admin-quotes-stats article {
+    padding: 14px;
+  }
+
+  .admin-quotes-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .admin-quotes-toolbar select {
+    width: 100%;
+  }
+
+  .quote-modal-backdrop {
+    align-items: flex-end;
+    padding: 0;
+  }
+
+  .quote-review-modal {
+    max-height: 94vh;
+    border-radius: 14px 14px 0 0;
+  }
+
+  .quote-modal-content {
+    max-height: calc(94vh - 82px);
+    padding: 18px;
+  }
+
+  .quote-details-grid,
+  .quote-form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .quote-product-pricing-header {
+    display: none;
+  }
+
+  .quote-product-pricing-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 13px 18px;
+    padding: 16px;
+  }
+
+  .quote-product-pricing-info {
+    grid-column: 1 / -1;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #eee9df;
+  }
+
+  .quote-product-pricing-info strong {
+    white-space: normal;
+  }
+
+  .quote-product-pricing-value > span,
+  .quote-product-price-field > span {
+    display: block;
+    margin-bottom: 5px;
+    color: #8a7451;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.35px;
+    text-transform: uppercase;
+  }
+
+  .quote-final-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .quote-final-summary > div {
+    border-right: none;
+    border-bottom: 1px solid #e7e3dc;
+  }
+
+  .quote-final-summary > div:last-child {
+    border-bottom: none;
+  }
+}
+
+@media (max-width: 440px) {
+  .admin-quotes-stats {
+    grid-template-columns: 1fr;
+  }
+
+  .quote-modal-actions {
+    flex-direction: column-reverse;
+  }
+
+  .quote-modal-actions button {
+    width: 100%;
+  }
+
+  .quote-product-pricing-row {
+    grid-template-columns: 1fr;
+  }
+
+  .quote-product-pricing-info {
+    grid-column: auto;
+  }
+}

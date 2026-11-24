@@ -1,0 +1,102 @@
+.storefront-footer {
+  display: grid;
+  grid-template-columns: 1.55fr repeat(4, 0.78fr) 1fr;
+  gap: 34px;
+  padding: 48px 6% 20px;
+  background: #101f31;
+  color: #ffffff;
+}
+
+.footer-brand h2 {
+  font-family: var(--font-heading);
+  font-size: 34px;
+  letter-spacing: 4px;
+  line-height: 1.2;
+}
+
+.footer-brand p { font-size: 9px; font-weight: 700; letter-spacing: 2px; }
+.footer-brand span { display: block; margin-top: 17px; color: #d6ad6b; font-size: 12px; }
+
+.footer-links,
+.footer-social {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 9px;
+  color: #d7dce2;
+  font-size: 12px;
+}
+
+.footer-links h4,
+.footer-social h4 {
+  margin-bottom: 5px;
+  color: #d6ad6b;
+  font-size: 10px;
+  letter-spacing: 1.4px;
+}
+
+.footer-links a { color: inherit; text-decoration: none; transition: color 0.2s ease; }
+.footer-links a:hover,
+.footer-back-to-top:hover { color: #d6ad6b; }
+
+.footer-back-to-top {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  padding: 7px 10px;
+  border: 1px solid rgba(214, 173, 107, 0.65);
+  border-radius: 4px;
+  color: #d6ad6b;
+  background: transparent;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  transition: color 0.2s ease, background 0.2s ease;
+}
+
+.footer-back-to-top:hover {
+  color: #101f31;
+  background: #d6ad6b;
+}
+.footer-social p { margin: 0; font-size: 12px; }
+
+.social-icons { display: flex; gap: 8px; margin-top: 4px; }
+.social-icons a,
+.social-icons span {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border: 1px solid rgba(214, 173, 107, 0.45);
+  border-radius: 50%;
+  color: #d6ad6b;
+  transition: 0.2s ease;
+}
+
+.social-icons a:hover { color: #101f31; background: #d6ad6b; }
+.social-icons .social-link-pending { cursor: not-allowed; opacity: 0.42; border-style: dashed; }
+
+.footer-bottom {
+  grid-column: 1 / -1;
+  margin-top: 12px;
+  padding-top: 18px;
+  border-top: 1px solid rgba(255, 255, 255, 0.13);
+  color: #aab2bd;
+  text-align: center;
+  font-size: 11px;
+}
+
+@media (max-width: 1050px) {
+  .storefront-footer { grid-template-columns: repeat(3, 1fr); }
+}
+
+@media (max-width: 760px) {
+  .storefront-footer { grid-template-columns: repeat(2, 1fr); padding: 40px 24px 20px; }
+  .footer-brand,
+  .footer-social { grid-column: 1 / -1; }
+}
+
+@media (max-width: 440px) {
+  .storefront-footer { grid-template-columns: 1fr 1fr; gap: 27px 18px; }
+}

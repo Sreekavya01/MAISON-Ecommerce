@@ -1,0 +1,32 @@
+:root {
+  /* Brand Colors */
+  --color-primary: #172B4D;
+  --color-secondary: #526581;
+  --color-accent: #C6A15B;
+
+  /* Backgrounds */
+  --color-background: #F8F7F4;
+  --color-white: #FFFFFF;
+
+  /* Text */
+  --color-text: #252A32;
+  --color-muted: #7B8491;
+
+  /* Borders */
+  --color-border: #E7E9ED;
+
+  /* Typography */
+  --font-primary: 'Inter', sans-serif;
+  --font-heading: 'Playfair Display', serif;
+
+  /* Border Radius */
+  --radius-sm: 6px;
+  --radius-md: 12px;
+  --radius-lg: 20px;
+
+  /* Shadows */
+  --shadow-card: 0 4px 20px rgba(23, 43, 77, 0.07);
+
+  /* Layout */
+  --container-width: 1280px;
+}
