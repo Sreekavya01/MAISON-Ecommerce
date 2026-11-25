@@ -1,4 +1,3 @@
-
 .sr-only {
   position: absolute;
   width: 1px;
@@ -190,6 +189,21 @@
   background: #b98a42;
   color: #fff;
   font-size: 9px;
+}
+
+/* MOBILE WISHLIST ICON - HIDDEN ON DESKTOP */
+
+.mobile-wishlist-action {
+  display: none;
+  position: relative;
+  align-items: center;
+  justify-content: center;
+  color: #172b40;
+  transition: color 0.2s ease;
+}
+
+.mobile-wishlist-action:hover {
+  color: #9a7135;
 }
 
 .mobile-menu-button {
@@ -458,10 +472,20 @@
 
   .nav-actions {
     justify-self: end;
-    gap: 15px;
+    gap: 17px;
   }
 
-  .nav-action:not(.nav-cart) { display: none; }
+  /* Hide desktop account, wishlist and orders actions */
+
+  .nav-action:not(.nav-cart) {
+    display: none;
+  }
+
+  /* Show mobile Wishlist icon before Cart */
+
+  .mobile-wishlist-action {
+    display: flex;
+  }
 
   .mobile-menu-button {
     display: grid;
@@ -480,8 +504,6 @@
   .navbar-secondary { min-height: 44px; }
   .navbar-secondary a { min-height: 44px; font-size: 11px; }
   .secondary-offer-link { margin-left: 0; }
-
-  /* SIGN IN BUTTON IS SHOWN IN MOBILE MENU */
 
   .navbar-secondary .navbar-signin-link {
     display: none;
@@ -503,6 +525,8 @@
   .mobile-navigation.open { display: flex; }
 
   .mobile-navigation a {
+    display: flex;
+    align-items: center;
     padding: 11px 7px;
     border-bottom: 1px solid #e9e2d7;
     color: #172b40;

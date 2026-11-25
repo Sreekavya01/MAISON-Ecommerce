@@ -106,8 +106,6 @@ function Navbar({ cartCount = 0, wishlistCount = 0 }) {
   return (
     <header className="navbar">
 
-      {/* ANNOUNCEMENT BAR */}
-
       <div className="announcement-bar">
         <div className="announcement-left">
           <Truck size={14} />
@@ -132,8 +130,6 @@ function Navbar({ cartCount = 0, wishlistCount = 0 }) {
         </div>
       </div>
 
-      {/* MAIN NAVIGATION */}
-
       <div className="navbar-main">
         <div className="navbar-container">
 
@@ -145,8 +141,6 @@ function Navbar({ cartCount = 0, wishlistCount = 0 }) {
             <span>MAISON</span>
             <small>THE ART OF SHOPPING</small>
           </Link>
-
-          {/* SEARCH */}
 
           <form
             className="navbar-search"
@@ -191,8 +185,6 @@ function Navbar({ cartCount = 0, wishlistCount = 0 }) {
             </button>
           </form>
 
-          {/* NAVIGATION ACTIONS */}
-
           <div className="nav-actions">
 
             <Link
@@ -207,6 +199,8 @@ function Navbar({ cartCount = 0, wishlistCount = 0 }) {
                 <strong>Account</strong>
               </span>
             </Link>
+
+            {/* DESKTOP WISHLIST */}
 
             <Link
               to="/wishlist"
@@ -240,10 +234,24 @@ function Navbar({ cartCount = 0, wishlistCount = 0 }) {
               </span>
             </Link>
 
+            {/* MOBILE WISHLIST ICON */}
+
+            <Link
+              to="/wishlist"
+              className="mobile-wishlist-action"
+              onClick={closeAllMenus}
+              aria-label={`Wishlist${wishlistCount > 0 ? `, ${wishlistCount} items` : ''}`}
+            >
+              <Heart size={23} />
+            </Link>
+
+            {/* CART */}
+
             <Link
               to="/cart"
               className="nav-action nav-cart"
               onClick={closeAllMenus}
+              aria-label={`Cart${cartCount > 0 ? `, ${cartCount} items` : ''}`}
             >
               <span className="nav-action-icon">
                 <ShoppingCart size={24} />
@@ -258,8 +266,6 @@ function Navbar({ cartCount = 0, wishlistCount = 0 }) {
                 <strong>Cart</strong>
               </span>
             </Link>
-
-            {/* MOBILE MENU BUTTON */}
 
             <button
               type="button"
@@ -277,8 +283,6 @@ function Navbar({ cartCount = 0, wishlistCount = 0 }) {
 
           </div>
         </div>
-
-        {/* SEARCH SUGGESTIONS */}
 
         {searchOpen && (
           <div className="navbar-search-panel">
@@ -364,8 +368,6 @@ function Navbar({ cartCount = 0, wishlistCount = 0 }) {
         )}
       </div>
 
-      {/* DESKTOP SECONDARY NAVIGATION */}
-
       <div className="navbar-secondary">
         <nav aria-label="Main navigation">
 
@@ -414,21 +416,10 @@ function Navbar({ cartCount = 0, wishlistCount = 0 }) {
           Shop all
         </NavLink>
 
-        {/* NEW WISHLIST LINK */}
+        {/* WISHLIST TEXT ONLY */}
 
-        <NavLink
-          to="/wishlist"
-          onClick={closeAllMenus}
-          className="mobile-wishlist-link"
-        >
-          <Heart size={17} />
+        <NavLink to="/wishlist" onClick={closeAllMenus}>
           Wishlist
-
-          {wishlistCount > 0 && (
-            <span className="mobile-wishlist-count">
-              {wishlistCount}
-            </span>
-          )}
         </NavLink>
 
         <NavLink to="/blog" onClick={closeAllMenus}>
