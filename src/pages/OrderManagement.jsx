@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 
@@ -40,6 +41,18 @@ function OrderManagement() {
   const [statusFilter, setStatusFilter] = useState('All');
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [loading, setLoading] = useState(true);
+
+  // SHIPPING STATUSES ARE MANAGED ONLY IN SHIPPING MANAGEMENT
+
+  const shippingStatuses = [
+    'Shipped',
+    'In Transit',
+    'Out for Delivery',
+    'Delivered',
+  ];
+
+  const isShippingStatus = (status) =>
+    shippingStatuses.includes(status);
 
   // LOAD ORDERS FROM FIREBASE
 
@@ -184,7 +197,7 @@ function OrderManagement() {
         hour: '2-digit',
         minute: '2-digit',
       });
-    } catch (error) {
+    } catch {
       return 'Date unavailable';
     }
   };
@@ -211,6 +224,7 @@ function OrderManagement() {
   });
 
   // UPDATE ORDER STATUS IN FIREBASE
+  // SHIPPING STATUS CHANGES ARE NOT ALLOWED HERE
 
   const updateOrderStatus = async (orderId, newStatus) => {
     const previousOrder = orders.find(
@@ -219,8 +233,6 @@ function OrderManagement() {
 
     if (!previousOrder) return;
 
-    // CANCELLED ORDERS CANNOT BE REACTIVATED
-
     if (previousOrder.status === 'Cancelled') {
       toast.error(
         'Cancelled orders cannot be moved to another status.'
@@ -228,22 +240,23 @@ function OrderManagement() {
       return;
     }
 
-    // PREVENT INVALID SHIPPING STATUS CHANGES
-
-    const shippingStatuses = [
-      'Shipped',
-      'In Transit',
-      'Out for Delivery',
-      'Delivered',
-    ];
+    if (isShippingStatus(newStatus)) {
+      toast.error(
+        'Please update shipping status from Shipping Management.'
+      );
+      return;
+    }
 
     if (
-      shippingStatuses.includes(newStatus) &&
-      previousOrder.status === 'Cancelled'
+      ![
+        'Order Placed',
+        'Confirmed',
+        'Pending',
+        'Processing',
+        'Cancelled',
+      ].includes(newStatus)
     ) {
-      toast.error(
-        'Cancelled orders cannot be shipped.'
-      );
+      toast.error('Invalid order status.');
       return;
     }
 
@@ -418,7 +431,7 @@ function OrderManagement() {
           <h1>Order Management</h1>
 
           <p>
-            Manage customer orders, monitor deliveries and track payments.
+            Manage customer orders, monitor order processing and track payments.
           </p>
         </div>
 
@@ -476,7 +489,7 @@ function OrderManagement() {
 
           <h2>{pendingCount}</h2>
 
-          <p>Awaiting confirmation</p>
+          <p>Awaiting processing</p>
 
         </div>
 
@@ -596,7 +609,7 @@ function OrderManagement() {
             <h3>All Orders</h3>
 
             <p>
-              Review and manage your customer orders.
+              Review and manage customer orders.
             </p>
           </div>
 
@@ -715,14 +728,15 @@ function OrderManagement() {
 
                     <td>
 
-                      {order.status === 'Cancelled' ? (
+                      {order.status === 'Cancelled' ||
+                      isShippingStatus(order.status) ? (
 
                         <span
                           className={`management-status-select ${getStatusClass(
                             order.status
                           )}`}
                         >
-                          Cancelled
+                          {order.status}
                         </span>
 
                       ) : (
@@ -754,22 +768,6 @@ function OrderManagement() {
 
                           <option value="Processing">
                             Processing
-                          </option>
-
-                          <option value="Shipped">
-                            Shipped
-                          </option>
-
-                          <option value="In Transit">
-                            In Transit
-                          </option>
-
-                          <option value="Out for Delivery">
-                            Out for Delivery
-                          </option>
-
-                          <option value="Delivered">
-                            Delivered
                           </option>
 
                           <option value="Cancelled">
