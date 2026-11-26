@@ -60,7 +60,7 @@ const getRequestStatuses = (requestType) => {
     return [...baseStatuses, ...replacementStatuses];
   }
 
-  if (requestType === 'Return') {
+  if (['Return Only', 'Return'].includes(requestType)) {
     return [...baseStatuses, ...returnStatuses];
   }
 

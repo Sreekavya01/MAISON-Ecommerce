@@ -62,12 +62,17 @@ const formatDiscountAmount = (amount) => {
 
   if (value > 0) return `- ${formatPrice(value)}`;
   if (value < 0) return `+ ${formatPrice(Math.abs(value))}`;
+
   return formatPrice(0);
 };
 
 const formatDate = (timestamp) => {
   if (!timestamp) return 'Just now';
-  const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+
+  const date = timestamp.toDate
+    ? timestamp.toDate()
+    : new Date(timestamp);
+
   if (Number.isNaN(date.getTime())) return 'Unknown date';
 
   return date.toLocaleString('en-IN', {
@@ -82,6 +87,7 @@ const formatDate = (timestamp) => {
 const timestampValue = (timestamp) => {
   if (!timestamp) return 0;
   if (timestamp.toMillis) return timestamp.toMillis();
+
   return new Date(timestamp).getTime() || 0;
 };
 
@@ -98,8 +104,10 @@ const getBulkProductLineId = (product, index) =>
 
 function AdminQuotations() {
   const location = useLocation();
+
   const relatedDocumentId = location.state?.relatedDocumentId;
   const notificationSourceCollection = location.state?.sourceCollection;
+
   const [quotations, setQuotations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
@@ -117,9 +125,12 @@ function AdminQuotations() {
     adminNotes: '',
   });
 
+  // LOAD NORMAL AND BULK QUOTATION REQUESTS
+
   useEffect(() => {
     let normalRequests = [];
     let bulkRequests = [];
+
     let normalLoaded = false;
     let bulkLoaded = false;
 
@@ -142,7 +153,11 @@ function AdminQuotations() {
 
     const handleError = (error) => {
       console.error('Quotation requests loading error:', error);
-      setLoadError('Some quotation requests could not be loaded.');
+
+      setLoadError(
+        'Some quotation requests could not be loaded.'
+      );
+
       setLoading(false);
     };
 
@@ -166,7 +181,9 @@ function AdminQuotations() {
       (snapshot) => {
         bulkRequests = snapshot.docs.map((item) => {
           const data = item.data();
+
           const customer = data.customer || {};
+
           const products = Array.isArray(data.products)
             ? data.products
             : [];
@@ -175,23 +192,32 @@ function AdminQuotations() {
             id: item.id,
             ...data,
             requestType: 'bulk',
+
             customerName: customer.name || 'Customer',
             customerEmail: customer.email || '',
             customerPhone: customer.phone || '',
             company: customer.company || '',
             deliveryAddress: customer.deliveryAddress || '',
             message: customer.message || '',
+
             productName: `${products.length} selected product(s)`,
+
             productCategory: 'Bulk Order',
+
             quantity: data.totalQuantity || 0,
+
             unitPrice:
               data.totalQuantity > 0
                 ? (Number(data.estimatedRegularTotal) || 0) /
                   data.totalQuantity
                 : 0,
-            estimatedTotal: Number(data.estimatedRegularTotal) || 0,
+
+            estimatedTotal:
+              Number(data.estimatedRegularTotal) || 0,
+
             estimatedDiscountPercent: 0,
             estimatedDiscountAmount: 0,
+
             products,
           };
         });
@@ -208,26 +234,44 @@ function AdminQuotations() {
     };
   }, []);
 
+  // STATISTICS
+
   const counts = useMemo(
     () => ({
       total: quotations.length,
-      pending: quotations.filter((item) => item.status === 'pending').length,
-      reviewed: quotations.filter((item) => item.status === 'reviewed').length,
-      approved: quotations.filter((item) => item.status === 'approved').length,
-      bulk: quotations.filter((item) => item.requestType === 'bulk').length,
+
+      pending: quotations.filter(
+        (item) => item.status === 'pending'
+      ).length,
+
+      reviewed: quotations.filter(
+        (item) => item.status === 'reviewed'
+      ).length,
+
+      approved: quotations.filter(
+        (item) => item.status === 'approved'
+      ).length,
+
+      bulk: quotations.filter(
+        (item) => item.requestType === 'bulk'
+      ).length,
     }),
     [quotations]
   );
+
+  // FILTER QUOTATIONS
 
   const filteredQuotations = useMemo(() => {
     const search = searchTerm.trim().toLowerCase();
 
     return quotations.filter((quotation) => {
       const matchesStatus =
-        statusFilter === 'all' || quotation.status === statusFilter;
+        statusFilter === 'all' ||
+        quotation.status === statusFilter;
 
       const matchesType =
-        typeFilter === 'all' || quotation.requestType === typeFilter;
+        typeFilter === 'all' ||
+        quotation.requestType === typeFilter;
 
       const matchesSearch =
         !search ||
@@ -236,30 +280,56 @@ function AdminQuotations() {
         quotation.customerPhone?.includes(search) ||
         quotation.productName?.toLowerCase().includes(search) ||
         quotation.company?.toLowerCase().includes(search) ||
-        getReference(quotation.id, quotation.requestType)
+        getReference(
+          quotation.id,
+          quotation.requestType
+        )
           .toLowerCase()
           .includes(search);
 
       return matchesStatus && matchesType && matchesSearch;
     });
-  }, [quotations, searchTerm, statusFilter, typeFilter]);
+  }, [
+    quotations,
+    searchTerm,
+    statusFilter,
+    typeFilter,
+  ]);
 
-  const isBulkRequest = selectedQuotation?.requestType === 'bulk';
+  const isBulkRequest =
+    selectedQuotation?.requestType === 'bulk';
+
   const selectedBulkProducts =
-    isBulkRequest && Array.isArray(selectedQuotation?.products)
+    isBulkRequest &&
+    Array.isArray(selectedQuotation?.products)
       ? selectedQuotation.products
       : [];
 
-  const draftUnitPrice = toFiniteNumber(draft.finalUnitPrice);
-  const draftDiscount = toFiniteNumber(draft.finalDiscountPercent);
+  const draftUnitPrice = toFiniteNumber(
+    draft.finalUnitPrice
+  );
 
-  const draftQuantity = toFiniteNumber(selectedQuotation?.quantity);
+  const draftDiscount = toFiniteNumber(
+    draft.finalDiscountPercent
+  );
 
-  const draftSubtotal = roundCurrency(draftUnitPrice * draftQuantity);
+  const draftQuantity = toFiniteNumber(
+    selectedQuotation?.quantity
+  );
+
+  const draftSubtotal = roundCurrency(
+    draftUnitPrice * draftQuantity
+  );
+
   const draftDiscountAmount = roundCurrency(
     (draftSubtotal * draftDiscount) / 100
   );
-  const draftTotal = roundCurrency(draftSubtotal - draftDiscountAmount);
+
+  const draftTotal = roundCurrency(
+    draftSubtotal - draftDiscountAmount
+  );
+
+  // BULK PRICE CALCULATIONS
 
   const bulkOriginalSubtotal = roundCurrency(
     selectedBulkProducts.reduce(
@@ -275,7 +345,9 @@ function AdminQuotations() {
     selectedBulkProducts.reduce(
       (total, product, index) =>
         total +
-        toFiniteNumber(draft.bulkProductPrices[index]) *
+        toFiniteNumber(
+          draft.bulkProductPrices[index]
+        ) *
           toFiniteNumber(product.quantity),
       0
     )
@@ -284,6 +356,7 @@ function AdminQuotations() {
   const bulkDiscountAmount = roundCurrency(
     bulkOriginalSubtotal - bulkFinalSubtotal
   );
+
   const bulkDiscountPercent =
     bulkOriginalSubtotal > 0
       ? roundCurrency(
@@ -294,15 +367,20 @@ function AdminQuotations() {
   const summarySubtotal = isBulkRequest
     ? bulkOriginalSubtotal
     : draftSubtotal;
+
   const summaryDiscountPercent = isBulkRequest
     ? bulkDiscountPercent
     : draftDiscount;
+
   const summaryDiscountAmount = isBulkRequest
     ? bulkDiscountAmount
     : draftDiscountAmount;
+
   const summaryFinalTotal = isBulkRequest
     ? bulkFinalSubtotal
     : draftTotal;
+
+  // OPEN QUOTATION FOR REVIEW
 
   const openReview = useCallback((quotation) => {
     const existingUnitPrice =
@@ -313,7 +391,10 @@ function AdminQuotations() {
     const products = Array.isArray(quotation.products)
       ? quotation.products
       : [];
-    const savedProducts = Array.isArray(quotation.finalProducts)
+
+    const savedProducts = Array.isArray(
+      quotation.finalProducts
+    )
       ? quotation.finalProducts
       : [];
 
@@ -321,28 +402,45 @@ function AdminQuotations() {
 
     setDraft({
       finalUnitPrice: String(existingUnitPrice),
+
       finalDiscountPercent: String(
         quotation.finalDiscountPercent ??
-        quotation.estimatedDiscountPercent ??
-        0
+          quotation.estimatedDiscountPercent ??
+          0
       ),
-      bulkProductPrices: products.map((product, index) => {
-        const lineId = getBulkProductLineId(product, index);
-        const savedProduct =
-          savedProducts.find((item) => item.lineId === lineId) ||
-          savedProducts[index];
 
-        return String(
-          savedProduct?.finalUnitPrice ??
-            product.finalUnitPrice ??
-            product.unitPrice ??
-            0
-        );
-      }),
-      status: quotation.status || 'pending',
+      bulkProductPrices: products.map(
+        (product, index) => {
+          const lineId = getBulkProductLineId(
+            product,
+            index
+          );
+
+          const savedProduct =
+            savedProducts.find(
+              (item) => item.lineId === lineId
+            ) || savedProducts[index];
+
+          return String(
+            savedProduct?.finalUnitPrice ??
+              product.finalUnitPrice ??
+              product.unitPrice ??
+              0
+          );
+        }
+      ),
+
+      // Bulk requests will be approved when saved.
+      status:
+        quotation.requestType === 'bulk'
+          ? 'approved'
+          : quotation.status || 'pending',
+
       adminNotes: quotation.adminNotes || '',
     });
   }, []);
+
+  // OPEN REQUEST FROM ADMIN NOTIFICATION
 
   useEffect(() => {
     if (!relatedDocumentId || loading) return;
@@ -351,7 +449,8 @@ function AdminQuotations() {
       (quotation) =>
         quotation.id === relatedDocumentId &&
         (!notificationSourceCollection ||
-          (notificationSourceCollection === 'bulkOrderRequests'
+          (notificationSourceCollection ===
+          'bulkOrderRequests'
             ? quotation.requestType === 'bulk'
             : quotation.requestType === 'normal'))
     );
@@ -361,6 +460,7 @@ function AdminQuotations() {
         setSearchTerm('');
         setStatusFilter('all');
         setTypeFilter('all');
+
         openReview(relatedQuotation);
       });
 
@@ -377,48 +477,80 @@ function AdminQuotations() {
   ]);
 
   const closeReview = () => {
-    if (!saving) setSelectedQuotation(null);
+    if (!saving) {
+      setSelectedQuotation(null);
+    }
   };
+
+  // SAVE FINAL QUOTATION
 
   const handleSave = async (event) => {
     event.preventDefault();
 
     if (!selectedQuotation || saving) return;
 
+    // VALIDATE BULK PRODUCTS
+
     if (isBulkRequest) {
       if (selectedBulkProducts.length === 0) {
-        toast.error('This bulk request has no products to price.');
+        toast.error(
+          'This bulk request has no products to price.'
+        );
+
         return;
       }
 
-      const invalidProductIndex = selectedBulkProducts.findIndex(
-        (_, index) => {
-          const price = Number(draft.bulkProductPrices[index]);
-          return !Number.isFinite(price) || price <= 0;
-        }
-      );
+      const invalidProductIndex =
+        selectedBulkProducts.findIndex(
+          (_, index) => {
+            const price = Number(
+              draft.bulkProductPrices[index]
+            );
+
+            return (
+              !Number.isFinite(price) ||
+              price <= 0
+            );
+          }
+        );
 
       if (invalidProductIndex !== -1) {
         toast.error(
           `Enter a valid final price for ${
-            selectedBulkProducts[invalidProductIndex].name ||
+            selectedBulkProducts[
+              invalidProductIndex
+            ].name ||
             `product ${invalidProductIndex + 1}`
           }.`
         );
+
         return;
       }
     } else {
-      if (!Number.isFinite(Number(draft.finalUnitPrice)) || draftUnitPrice <= 0) {
-        toast.error('Enter a valid final unit price.');
+      if (
+        !Number.isFinite(
+          Number(draft.finalUnitPrice)
+        ) ||
+        draftUnitPrice <= 0
+      ) {
+        toast.error(
+          'Enter a valid final unit price.'
+        );
+
         return;
       }
 
       if (
-        !Number.isFinite(Number(draft.finalDiscountPercent)) ||
+        !Number.isFinite(
+          Number(draft.finalDiscountPercent)
+        ) ||
         draftDiscount < 0 ||
         draftDiscount > 100
       ) {
-        toast.error('Discount must be between 0% and 100%.');
+        toast.error(
+          'Discount must be between 0% and 100%.'
+        );
+
         return;
       }
     }
@@ -431,89 +563,168 @@ function AdminQuotations() {
     try {
       setSaving(true);
 
-      const pricingData = isBulkRequest
-        ? (() => {
-            const finalProducts = selectedBulkProducts.map(
-              (product, index) => {
-                const quantity = toFiniteNumber(product.quantity);
-                const originalUnitPrice = roundCurrency(product.unitPrice);
-                const finalUnitPrice = roundCurrency(
+      let pricingData;
+
+      // BULK QUOTATION PRICING
+
+      if (isBulkRequest) {
+        const finalProducts =
+          selectedBulkProducts.map(
+            (product, index) => {
+              const quantity = toFiniteNumber(
+                product.quantity
+              );
+
+              const originalUnitPrice =
+                roundCurrency(product.unitPrice);
+
+              const finalUnitPrice =
+                roundCurrency(
                   draft.bulkProductPrices[index]
                 );
 
-                return {
-                  lineId: getBulkProductLineId(product, index),
-                  productId: product.productId || null,
-                  name: product.name || 'MAISON product',
-                  category: product.category || null,
-                  selectedColor: product.selectedColor || null,
-                  selectedSize: product.selectedSize || null,
-                  quantity,
-                  originalUnitPrice,
-                  finalUnitPrice,
-                  originalLineTotal: roundCurrency(
-                    originalUnitPrice * quantity
-                  ),
-                  finalLineTotal: roundCurrency(
-                    finalUnitPrice * quantity
-                  ),
-                };
-              }
-            );
-            const totalQuantity = finalProducts.reduce(
-              (total, product) => total + product.quantity,
-              0
-            );
-            const finalAverageUnitPrice =
-              totalQuantity > 0
-                ? roundCurrency(bulkFinalSubtotal / totalQuantity)
-                : 0;
+              return {
+                lineId: getBulkProductLineId(
+                  product,
+                  index
+                ),
 
-            return {
-              pricingMode: 'product-wise',
-              finalProducts,
-              originalSubtotal: bulkOriginalSubtotal,
-              finalUnitPrice: finalAverageUnitPrice,
-              finalAverageUnitPrice,
-              finalDiscountPercent: bulkDiscountPercent,
-              finalSubtotal: bulkFinalSubtotal,
-              finalDiscountAmount: bulkDiscountAmount,
-              finalTotal: bulkFinalSubtotal,
-            };
-          })()
-        : {
-            finalUnitPrice: draftUnitPrice,
-            finalDiscountPercent: draftDiscount,
-            finalSubtotal: draftSubtotal,
-            finalDiscountAmount: draftDiscountAmount,
-            finalTotal: draftTotal,
-          };
+                productId:
+                  product.productId || null,
+
+                name:
+                  product.name || 'MAISON product',
+
+                category:
+                  product.category || null,
+
+                selectedColor:
+                  product.selectedColor || null,
+
+                selectedSize:
+                  product.selectedSize || null,
+
+                quantity,
+
+                originalUnitPrice,
+
+                finalUnitPrice,
+
+                originalLineTotal: roundCurrency(
+                  originalUnitPrice * quantity
+                ),
+
+                finalLineTotal: roundCurrency(
+                  finalUnitPrice * quantity
+                ),
+              };
+            }
+          );
+
+        const totalQuantity =
+          finalProducts.reduce(
+            (total, product) =>
+              total + product.quantity,
+            0
+          );
+
+        const finalAverageUnitPrice =
+          totalQuantity > 0
+            ? roundCurrency(
+                bulkFinalSubtotal / totalQuantity
+              )
+            : 0;
+
+        pricingData = {
+          pricingMode: 'product-wise',
+
+          finalProducts,
+
+          originalSubtotal:
+            bulkOriginalSubtotal,
+
+          finalUnitPrice:
+            finalAverageUnitPrice,
+
+          finalAverageUnitPrice,
+
+          finalDiscountPercent:
+            bulkDiscountPercent,
+
+          finalSubtotal:
+            bulkFinalSubtotal,
+
+          finalDiscountAmount:
+            bulkDiscountAmount,
+
+          finalTotal:
+            bulkFinalSubtotal,
+        };
+      } else {
+        // NORMAL QUOTATION PRICING
+
+        pricingData = {
+          finalUnitPrice: draftUnitPrice,
+
+          finalDiscountPercent: draftDiscount,
+
+          finalSubtotal: draftSubtotal,
+
+          finalDiscountAmount:
+            draftDiscountAmount,
+
+          finalTotal: draftTotal,
+        };
+      }
+
+      // IMPORTANT FIX:
+      // Every successfully saved bulk quotation
+      // will automatically become APPROVED.
+
+      const finalStatus = isBulkRequest
+        ? 'approved'
+        : draft.status;
 
       await updateDoc(
-        doc(db, collectionName, selectedQuotation.id),
+        doc(
+          db,
+          collectionName,
+          selectedQuotation.id
+        ),
         {
           ...pricingData,
-          status: draft.status,
+
+          status: finalStatus,
+
           adminNotes: draft.adminNotes.trim(),
+
           reviewedBy:
             auth.currentUser?.email ||
             auth.currentUser?.uid ||
             'admin',
+
           reviewedAt: serverTimestamp(),
+
           updatedAt: serverTimestamp(),
         }
       );
 
       toast.success(
-        selectedQuotation.requestType === 'bulk'
-          ? 'Bulk order quotation updated.'
-          : 'Quotation pricing updated.'
+        isBulkRequest
+          ? 'Bulk quotation approved and updated successfully!'
+          : 'Quotation pricing updated successfully!'
       );
 
       setSelectedQuotation(null);
     } catch (error) {
-      console.error('Quotation update error:', error);
-      toast.error('Unable to save the quotation.');
+      console.error(
+        'Quotation update error:',
+        error
+      );
+
+      toast.error(
+        'Unable to save the quotation. Please try again.'
+      );
     } finally {
       setSaving(false);
     }
@@ -530,9 +741,12 @@ function AdminQuotations() {
       <header className="admin-quotes-header">
         <div>
           <span>SALES &amp; PRICING</span>
+
           <h1>Quotation Requests</h1>
+
           <p>
-            Review customer requirements, bulk orders and confirm final pricing.
+            Review customer requirements, bulk orders
+            and confirm final pricing.
           </p>
         </div>
 
@@ -541,11 +755,14 @@ function AdminQuotations() {
         </div>
       </header>
 
+      {/* STATISTICS */}
+
       <section className="admin-quotes-stats">
         <article>
           <div className="quote-stat-icon total">
             <FileText size={20} />
           </div>
+
           <div>
             <span>Total Requests</span>
             <strong>{counts.total}</strong>
@@ -556,6 +773,7 @@ function AdminQuotations() {
           <div className="quote-stat-icon pending">
             <Clock3 size={20} />
           </div>
+
           <div>
             <span>Pending Review</span>
             <strong>{counts.pending}</strong>
@@ -566,6 +784,7 @@ function AdminQuotations() {
           <div className="quote-stat-icon reviewed">
             <Eye size={20} />
           </div>
+
           <div>
             <span>Reviewed</span>
             <strong>{counts.reviewed}</strong>
@@ -576,6 +795,7 @@ function AdminQuotations() {
           <div className="quote-stat-icon approved">
             <CheckCircle2 size={20} />
           </div>
+
           <div>
             <span>Approved</span>
             <strong>{counts.approved}</strong>
@@ -586,6 +806,7 @@ function AdminQuotations() {
           <div className="quote-stat-icon total">
             <Package size={20} />
           </div>
+
           <div>
             <span>Bulk Requests</span>
             <strong>{counts.bulk}</strong>
@@ -593,36 +814,57 @@ function AdminQuotations() {
         </article>
       </section>
 
+      {/* QUOTATION TABLE */}
+
       <section className="admin-quotes-panel">
         <div className="admin-quotes-toolbar">
           <label className="admin-quotes-search">
             <Search size={17} />
+
             <input
               type="search"
               placeholder="Search reference, customer or product…"
               value={searchTerm}
-              onChange={(event) => setSearchTerm(event.target.value)}
+              onChange={(event) =>
+                setSearchTerm(event.target.value)
+              }
             />
           </label>
 
           <select
             aria-label="Filter request type"
             value={typeFilter}
-            onChange={(event) => setTypeFilter(event.target.value)}
+            onChange={(event) =>
+              setTypeFilter(event.target.value)
+            }
           >
-            <option value="all">All request types</option>
-            <option value="normal">Normal Quotations</option>
-            <option value="bulk">Bulk Orders</option>
+            <option value="all">
+              All request types
+            </option>
+
+            <option value="normal">
+              Normal Quotations
+            </option>
+
+            <option value="bulk">
+              Bulk Orders
+            </option>
           </select>
 
           <select
             aria-label="Filter quotations by status"
             value={statusFilter}
-            onChange={(event) => setStatusFilter(event.target.value)}
+            onChange={(event) =>
+              setStatusFilter(event.target.value)
+            }
           >
             <option value="all">All statuses</option>
+
             {STATUS_OPTIONS.map((status) => (
-              <option key={status.value} value={status.value}>
+              <option
+                key={status.value}
+                value={status.value}
+              >
                 {status.label}
               </option>
             ))}
@@ -631,7 +873,11 @@ function AdminQuotations() {
 
         {loading && (
           <div className="admin-quotes-state">
-            <LoaderCircle className="admin-quotes-spinner" size={30} />
+            <LoaderCircle
+              className="admin-quotes-spinner"
+              size={30}
+            />
+
             <p>Loading quotation requests…</p>
           </div>
         )}
@@ -643,93 +889,142 @@ function AdminQuotations() {
           </div>
         )}
 
-        {!loading && !loadError && filteredQuotations.length === 0 && (
-          <div className="admin-quotes-state">
-            <FileText size={32} />
-            <p>No quotation requests match this view.</p>
-          </div>
-        )}
+        {!loading &&
+          !loadError &&
+          filteredQuotations.length === 0 && (
+            <div className="admin-quotes-state">
+              <FileText size={32} />
+              <p>
+                No quotation requests match this view.
+              </p>
+            </div>
+          )}
 
-        {!loading && !loadError && filteredQuotations.length > 0 && (
-          <div className="admin-quotes-table-wrap">
-            <table className="admin-quotes-table">
-              <thead>
-                <tr>
-                  <th>Reference</th>
-                  <th>Customer</th>
-                  <th>Product / Request</th>
-                  <th>Estimate</th>
-                  <th>Status</th>
-                  <th>Action</th>
-                </tr>
-              </thead>
-
-              <tbody>
-                {filteredQuotations.map((quotation) => (
-                  <tr key={`${quotation.requestType}-${quotation.id}`}>
-                    <td data-label="Reference">
-                      <strong className="quote-reference">
-                        {getReference(quotation.id, quotation.requestType)}
-                      </strong>
-                      <span className="quote-date">
-                        {formatDate(quotation.createdAt)}
-                      </span>
-                      <span>
-                        {quotation.requestType === 'bulk'
-                          ? 'Bulk Order'
-                          : 'Normal Quotation'}
-                      </span>
-                    </td>
-
-                    <td data-label="Customer">
-                      <strong>{quotation.customerName || 'Customer'}</strong>
-                      <span>{quotation.customerEmail || 'No email'}</span>
-                    </td>
-
-                    <td data-label="Product">
-                      <strong>{quotation.productName || 'Product'}</strong>
-                      <span>{quotation.quantity || 0} units</span>
-                    </td>
-
-                    <td data-label="Estimate">
-                      <strong>{formatPrice(quotation.estimatedTotal)}</strong>
-                      <span>
-                        {quotation.estimatedDiscountPercent || 0}% estimated discount
-                      </span>
-                    </td>
-
-                    <td data-label="Status">
-                      <span
-                        className={`quote-status ${quotation.status || 'pending'}`}
-                      >
-                        {STATUS_OPTIONS.find(
-                          (item) => item.value === quotation.status
-                        )?.label || 'Pending'}
-                      </span>
-                    </td>
-
-                    <td data-label="Action">
-                      <button
-                        type="button"
-                        className="quote-review-button"
-                        onClick={() => openReview(quotation)}
-                      >
-                        <Eye size={15} /> Review
-                      </button>
-                    </td>
+        {!loading &&
+          !loadError &&
+          filteredQuotations.length > 0 && (
+            <div className="admin-quotes-table-wrap">
+              <table className="admin-quotes-table">
+                <thead>
+                  <tr>
+                    <th>Reference</th>
+                    <th>Customer</th>
+                    <th>Product / Request</th>
+                    <th>Estimate</th>
+                    <th>Status</th>
+                    <th>Action</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+                </thead>
+
+                <tbody>
+                  {filteredQuotations.map(
+                    (quotation) => (
+                      <tr
+                        key={`${quotation.requestType}-${quotation.id}`}
+                      >
+                        <td data-label="Reference">
+                          <strong className="quote-reference">
+                            {getReference(
+                              quotation.id,
+                              quotation.requestType
+                            )}
+                          </strong>
+
+                          <span className="quote-date">
+                            {formatDate(
+                              quotation.createdAt
+                            )}
+                          </span>
+
+                          <span>
+                            {quotation.requestType ===
+                            'bulk'
+                              ? 'Bulk Order'
+                              : 'Normal Quotation'}
+                          </span>
+                        </td>
+
+                        <td data-label="Customer">
+                          <strong>
+                            {quotation.customerName ||
+                              'Customer'}
+                          </strong>
+
+                          <span>
+                            {quotation.customerEmail ||
+                              'No email'}
+                          </span>
+                        </td>
+
+                        <td data-label="Product">
+                          <strong>
+                            {quotation.productName ||
+                              'Product'}
+                          </strong>
+
+                          <span>
+                            {quotation.quantity || 0}{' '}
+                            units
+                          </span>
+                        </td>
+
+                        <td data-label="Estimate">
+                          <strong>
+                            {formatPrice(
+                              quotation.estimatedTotal
+                            )}
+                          </strong>
+
+                          <span>
+                            {quotation.estimatedDiscountPercent ||
+                              0}
+                            % estimated discount
+                          </span>
+                        </td>
+
+                        <td data-label="Status">
+                          <span
+                            className={`quote-status ${
+                              quotation.status || 'pending'
+                            }`}
+                          >
+                            {STATUS_OPTIONS.find(
+                              (item) =>
+                                item.value ===
+                                quotation.status
+                            )?.label || 'Pending'}
+                          </span>
+                        </td>
+
+                        <td data-label="Action">
+                          <button
+                            type="button"
+                            className="quote-review-button"
+                            onClick={() =>
+                              openReview(quotation)
+                            }
+                          >
+                            <Eye size={15} />
+                            Review
+                          </button>
+                        </td>
+                      </tr>
+                    )
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
       </section>
+
+      {/* REVIEW MODAL */}
 
       {selectedQuotation && (
         <div
           className="quote-modal-backdrop"
           onMouseDown={(event) =>
-            event.target === event.currentTarget && closeReview()
+            event.target === event.currentTarget &&
+            closeReview()
           }
         >
           <section
@@ -746,8 +1041,9 @@ function AdminQuotations() {
                     selectedQuotation.requestType
                   )}
                 </span>
+
                 <h2 id="quote-review-title">
-                  {selectedQuotation.requestType === 'bulk'
+                  {isBulkRequest
                     ? 'Review Bulk Order'
                     : 'Review Quotation'}
                 </h2>
@@ -764,31 +1060,48 @@ function AdminQuotations() {
             </header>
 
             <div className="quote-modal-content">
+              {/* CUSTOMER DETAILS */}
+
               <div className="quote-details-grid">
                 <article>
                   <h3>
-                    <UserRound size={16} /> Customer
+                    <UserRound size={16} />
+                    Customer
                   </h3>
 
-                  <strong>{selectedQuotation.customerName}</strong>
+                  <strong>
+                    {selectedQuotation.customerName}
+                  </strong>
 
                   {selectedQuotation.company && (
-                    <span>{selectedQuotation.company}</span>
+                    <span>
+                      {selectedQuotation.company}
+                    </span>
                   )}
 
-                  <a href={`mailto:${selectedQuotation.customerEmail}`}>
+                  <a
+                    href={`mailto:${selectedQuotation.customerEmail}`}
+                  >
                     <Mail size={14} />
-                    {selectedQuotation.customerEmail || 'No email'}
+
+                    {selectedQuotation.customerEmail ||
+                      'No email'}
                   </a>
 
-                  <a href={`tel:${selectedQuotation.customerPhone}`}>
+                  <a
+                    href={`tel:${selectedQuotation.customerPhone}`}
+                  >
                     <Phone size={14} />
-                    {selectedQuotation.customerPhone || 'No phone'}
+
+                    {selectedQuotation.customerPhone ||
+                      'No phone'}
                   </a>
 
                   {selectedQuotation.deliveryAddress && (
                     <span>
-                      <strong>Delivery address:</strong>{' '}
+                      <strong>
+                        Delivery address:
+                      </strong>{' '}
                       {selectedQuotation.deliveryAddress}
                     </span>
                   )}
@@ -796,73 +1109,121 @@ function AdminQuotations() {
 
                 <article>
                   <h3>
-                    <Package size={16} /> Request
+                    <Package size={16} />
+                    Request
                   </h3>
 
-                  {selectedQuotation.requestType === 'bulk' ? (
+                  {isBulkRequest ? (
                     <>
-                      <strong>Bulk Order Request</strong>
+                      <strong>
+                        Bulk Order Request
+                      </strong>
+
                       <span>
-                        Total quantity: {selectedQuotation.totalQuantity || 0} units
+                        Total quantity:{' '}
+                        {selectedQuotation.totalQuantity ||
+                          0}{' '}
+                        units
                       </span>
 
                       <span>
                         Estimated total:{' '}
-                        {formatPrice(selectedQuotation.estimatedRegularTotal)}
+                        {formatPrice(
+                          selectedQuotation.estimatedRegularTotal
+                        )}
                       </span>
 
                       <span>
-                        Source: {selectedQuotation.source || 'Storefront'}
+                        Source:{' '}
+                        {selectedQuotation.source ||
+                          'Storefront'}
                       </span>
                     </>
                   ) : (
                     <>
-                      <strong>{selectedQuotation.productName}</strong>
+                      <strong>
+                        {selectedQuotation.productName}
+                      </strong>
+
                       <span>
-                        {selectedQuotation.productCategory || 'Uncategorised'}
+                        {selectedQuotation.productCategory ||
+                          'Uncategorised'}
                       </span>
+
                       <span>
                         {selectedQuotation.quantity} units ×{' '}
-                        {formatPrice(selectedQuotation.unitPrice)}
+                        {formatPrice(
+                          selectedQuotation.unitPrice
+                        )}
                       </span>
+
                       <span>
-                        Estimate: {formatPrice(selectedQuotation.estimatedTotal)}
+                        Estimate:{' '}
+                        {formatPrice(
+                          selectedQuotation.estimatedTotal
+                        )}
                       </span>
                     </>
                   )}
                 </article>
               </div>
 
-              {selectedQuotation.requestType === 'bulk' &&
+              {/* BULK PRODUCTS */}
+
+              {isBulkRequest &&
                 selectedQuotation.products?.length > 0 && (
                   <div className="quote-customer-note">
                     <strong>Selected Products</strong>
 
-                    {selectedQuotation.products.map((product, index) => (
-                      <p key={`${product.productId || index}-${index}`}>
-                        <strong>{product.name}</strong>
-                        {' — '}
-                        {product.quantity} units ×{' '}
-                        {formatPrice(product.unitPrice)}
-                        {product.selectedColor
-                          ? ` | Colour: ${product.selectedColor}`
-                          : ''}
-                        {product.selectedSize
-                          ? ` | Size: ${product.selectedSize}`
-                          : ''}
-                      </p>
-                    ))}
+                    {selectedQuotation.products.map(
+                      (product, index) => (
+                        <p
+                          key={`${
+                            product.productId || index
+                          }-${index}`}
+                        >
+                          <strong>
+                            {product.name}
+                          </strong>
+
+                          {' — '}
+
+                          {product.quantity} units ×{' '}
+                          {formatPrice(
+                            product.unitPrice
+                          )}
+
+                          {product.selectedColor
+                            ? ` | Colour: ${product.selectedColor}`
+                            : ''}
+
+                          {product.selectedSize
+                            ? ` | Size: ${product.selectedSize}`
+                            : ''}
+                        </p>
+                      )
+                    )}
                   </div>
                 )}
 
               {selectedQuotation.message && (
                 <div className="quote-customer-note">
-                  <strong>Customer Requirements</strong>
-                  <p>{selectedQuotation.message}</p>
+                  <strong>
+                    Customer Requirements
+                  </strong>
+
+                  <p>
+                    {selectedQuotation.message}
+                  </p>
                 </div>
               )}
 
-              <form className="quote-pricing-form" onSubmit={handleSave}>
+              {/* PRICING FORM */}
+
+              <form
+                className="quote-pricing-form"
+                onSubmit={handleSave}
+              >
                 <div className="quote-pricing-title">
                   <div>
                     <IndianRupee size={18} />
@@ -870,11 +1231,13 @@ function AdminQuotations() {
                   </div>
 
                   <p>
-                    {selectedQuotation.requestType === 'bulk'
+                    {isBulkRequest
                       ? 'Set a final unit price for every product in this bulk request.'
                       : 'Set the confirmed price and update the request status.'}
                   </p>
                 </div>
+
+                {/* BULK PRICING */}
 
                 {isBulkRequest ? (
                   <>
@@ -889,104 +1252,165 @@ function AdminQuotations() {
                         <span>Final price</span>
                       </div>
 
-                      {selectedBulkProducts.map((product, index) => {
-                        const quantity = toFiniteNumber(product.quantity);
-                        const originalUnitPrice = toFiniteNumber(
-                          product.unitPrice
-                        );
-                        const finalUnitPrice = toFiniteNumber(
-                          draft.bulkProductPrices[index]
-                        );
+                      {selectedBulkProducts.map(
+                        (product, index) => {
+                          const quantity =
+                            toFiniteNumber(
+                              product.quantity
+                            );
 
-                        return (
-                          <div
-                            className="quote-product-pricing-row"
-                            key={getBulkProductLineId(product, index)}
-                          >
-                            <div className="quote-product-pricing-info">
-                              <strong>
-                                {product.name || `Product ${index + 1}`}
-                              </strong>
-                              <span>
-                                {[product.selectedColor, product.selectedSize]
-                                  .filter(Boolean)
-                                  .join(' · ') || 'Standard selection'}
-                              </span>
+                          const originalUnitPrice =
+                            toFiniteNumber(
+                              product.unitPrice
+                            );
+
+                          const finalUnitPrice =
+                            toFiniteNumber(
+                              draft.bulkProductPrices[
+                                index
+                              ]
+                            );
+
+                          return (
+                            <div
+                              className="quote-product-pricing-row"
+                              key={getBulkProductLineId(
+                                product,
+                                index
+                              )}
+                            >
+                              <div className="quote-product-pricing-info">
+                                <strong>
+                                  {product.name ||
+                                    `Product ${index + 1}`}
+                                </strong>
+
+                                <span>
+                                  {[
+                                    product.selectedColor,
+                                    product.selectedSize,
+                                  ]
+                                    .filter(Boolean)
+                                    .join(' · ') ||
+                                    'Standard selection'}
+                                </span>
+                              </div>
+
+                              <div className="quote-product-pricing-value">
+                                <span>Quantity</span>
+
+                                <strong>
+                                  {quantity} units
+                                </strong>
+                              </div>
+
+                              <div className="quote-product-pricing-value">
+                                <span>
+                                  Original price
+                                </span>
+
+                                <strong>
+                                  {formatPrice(
+                                    originalUnitPrice
+                                  )}
+                                </strong>
+
+                                <small>
+                                  {formatPrice(
+                                    originalUnitPrice *
+                                      quantity
+                                  )}{' '}
+                                  total
+                                </small>
+                              </div>
+
+                              <label className="quote-product-price-field">
+                                <span>
+                                  Final unit price (₹)
+                                </span>
+
+                                <input
+                                  type="number"
+                                  min="0.01"
+                                  step="0.01"
+                                  value={
+                                    draft.bulkProductPrices[
+                                      index
+                                    ] ?? ''
+                                  }
+                                  onChange={(event) =>
+                                    setDraft(
+                                      (current) => ({
+                                        ...current,
+
+                                        bulkProductPrices:
+                                          current.bulkProductPrices.map(
+                                            (
+                                              price,
+                                              priceIndex
+                                            ) =>
+                                              priceIndex ===
+                                              index
+                                                ? event.target
+                                                    .value
+                                                : price
+                                          ),
+                                      })
+                                    )
+                                  }
+                                  aria-label={`Final unit price for ${
+                                    product.name ||
+                                    `product ${index + 1}`
+                                  }`}
+                                  disabled={saving}
+                                  required
+                                />
+
+                                <small>
+                                  {formatPrice(
+                                    finalUnitPrice *
+                                      quantity
+                                  )}{' '}
+                                  total
+                                </small>
+                              </label>
                             </div>
-
-                            <div className="quote-product-pricing-value">
-                              <span>Quantity</span>
-                              <strong>{quantity} units</strong>
-                            </div>
-
-                            <div className="quote-product-pricing-value">
-                              <span>Original price</span>
-                              <strong>{formatPrice(originalUnitPrice)}</strong>
-                              <small>
-                                {formatPrice(originalUnitPrice * quantity)} total
-                              </small>
-                            </div>
-
-                            <label className="quote-product-price-field">
-                              <span>Final unit price (₹)</span>
-                              <input
-                                type="number"
-                                min="0.01"
-                                step="0.01"
-                                value={draft.bulkProductPrices[index] ?? ''}
-                                onChange={(event) =>
-                                  setDraft((current) => ({
-                                    ...current,
-                                    bulkProductPrices:
-                                      current.bulkProductPrices.map(
-                                        (price, priceIndex) =>
-                                          priceIndex === index
-                                            ? event.target.value
-                                            : price
-                                      ),
-                                  }))
-                                }
-                                aria-label={`Final unit price for ${
-                                  product.name || `product ${index + 1}`
-                                }`}
-                                disabled={saving}
-                                required
-                              />
-                              <small>
-                                {formatPrice(finalUnitPrice * quantity)} total
-                              </small>
-                            </label>
-                          </div>
-                        );
-                      })}
+                          );
+                        }
+                      )}
                     </div>
+
+                    {/* BULK STATUS IS AUTOMATICALLY APPROVED */}
 
                     <div className="quote-form-grid quote-bulk-status-grid">
                       <label>
                         Status
+
                         <select
-                          value={draft.status}
-                          onChange={(event) =>
-                            setDraft((current) => ({
-                              ...current,
-                              status: event.target.value,
-                            }))
-                          }
-                          disabled={saving}
+                          value="approved"
+                          disabled
+                          aria-label="Bulk quotation status"
                         >
-                          {STATUS_OPTIONS.map((status) => (
-                            <option key={status.value} value={status.value}>
-                              {status.label}
-                            </option>
-                          ))}
+                          <option value="approved">
+                            Approved
+                          </option>
                         </select>
+
+                        <small>
+                          The quotation will be approved
+                          automatically when you save
+                          the final pricing.
+                        </small>
                       </label>
                     </div>
                   </>
                 ) : (
+                  /* NORMAL QUOTATION PRICING */
+
                   <div className="quote-form-grid">
                     <label>
                       Final unit price (₹)
+
                       <input
                         type="number"
                         min="1"
@@ -995,7 +1419,8 @@ function AdminQuotations() {
                         onChange={(event) =>
                           setDraft((current) => ({
                             ...current,
-                            finalUnitPrice: event.target.value,
+                            finalUnitPrice:
+                              event.target.value,
                           }))
                         }
                         disabled={saving}
@@ -1005,16 +1430,20 @@ function AdminQuotations() {
 
                     <label>
                       Discount (%)
+
                       <input
                         type="number"
                         min="0"
                         max="100"
                         step="0.1"
-                        value={draft.finalDiscountPercent}
+                        value={
+                          draft.finalDiscountPercent
+                        }
                         onChange={(event) =>
                           setDraft((current) => ({
                             ...current,
-                            finalDiscountPercent: event.target.value,
+                            finalDiscountPercent:
+                              event.target.value,
                           }))
                         }
                         disabled={saving}
@@ -1024,6 +1453,7 @@ function AdminQuotations() {
 
                     <label>
                       Status
+
                       <select
                         value={draft.status}
                         onChange={(event) =>
@@ -1034,41 +1464,62 @@ function AdminQuotations() {
                         }
                         disabled={saving}
                       >
-                        {STATUS_OPTIONS.map((status) => (
-                          <option key={status.value} value={status.value}>
-                            {status.label}
-                          </option>
-                        ))}
+                        {STATUS_OPTIONS.map(
+                          (status) => (
+                            <option
+                              key={status.value}
+                              value={status.value}
+                            >
+                              {status.label}
+                            </option>
+                          )
+                        )}
                       </select>
                     </label>
                   </div>
                 )}
 
+                {/* FINAL SUMMARY */}
+
                 <div className="quote-final-summary">
                   <div>
                     <span>Subtotal</span>
-                    <strong>{formatPrice(summarySubtotal)}</strong>
+
+                    <strong>
+                      {formatPrice(summarySubtotal)}
+                    </strong>
                   </div>
 
                   <div>
                     <span>Overall discount</span>
+
                     <strong>
-                      {formatPercentage(summaryDiscountPercent)}
+                      {formatPercentage(
+                        summaryDiscountPercent
+                      )}
                     </strong>
                   </div>
 
                   <div>
                     <span>Discount amount</span>
+
                     <strong>
-                      {formatDiscountAmount(summaryDiscountAmount)}
+                      {formatDiscountAmount(
+                        summaryDiscountAmount
+                      )}
                     </strong>
                   </div>
 
                   <div className="quote-final-total">
                     <span>Final total</span>
-                    <strong>{formatPrice(summaryFinalTotal)}</strong>
+
+                    <strong>
+                      {formatPrice(summaryFinalTotal)}
+                    </strong>
                   </div>
                 </div>
+
+                {/* ADMIN NOTES */}
 
                 <label className="quote-admin-notes">
                   Internal notes
@@ -1086,6 +1537,8 @@ function AdminQuotations() {
                     disabled={saving}
                   />
                 </label>
+
+                {/* ACTION BUTTONS */}
 
                 <div className="quote-modal-actions">
                   <button
@@ -1111,7 +1564,9 @@ function AdminQuotations() {
                       <Save size={16} />
                     )}
 
-                    {saving ? 'Saving…' : 'Save Review'}
+                    {saving
+                      ? 'Saving…'
+                      : 'Save Review'}
                   </button>
                 </div>
               </form>

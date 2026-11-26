@@ -104,6 +104,12 @@ const returnReasons = [
   'Other',
 ];
 
+const returnRequestTypes = [
+  'Return & Refund',
+  'Replacement',
+  'Return Only',
+];
+
 const cancellationReasons = [
   'Ordered by mistake',
   'Found a better price',
@@ -267,7 +273,7 @@ function Account({ wishlist = [], onAddToCart }) {
   const [returnForm, setReturnForm] = useState({
     productIndex: '',
     reason: '',
-    requestType: 'Refund',
+    requestType: 'Return & Refund',
     comments: '',
   });
 
@@ -1000,7 +1006,7 @@ function Account({ wishlist = [], onAddToCart }) {
     setReturnForm({
       productIndex: '',
       reason: '',
-      requestType: 'Refund',
+      requestType: 'Return & Refund',
       comments: '',
     });
   };
@@ -1013,7 +1019,7 @@ function Account({ wishlist = [], onAddToCart }) {
     setReturnForm({
       productIndex: '',
       reason: '',
-      requestType: 'Refund',
+      requestType: 'Return & Refund',
       comments: '',
     });
   };
@@ -1047,7 +1053,7 @@ function Account({ wishlist = [], onAddToCart }) {
     if (
       returnForm.productIndex === '' ||
       !returnForm.reason ||
-      !returnForm.requestType
+      !returnRequestTypes.includes(returnForm.requestType)
     ) {
       toast.error('Please complete all required fields.');
       return;
@@ -1113,7 +1119,7 @@ function Account({ wishlist = [], onAddToCart }) {
             description:
               returnForm.requestType === 'Replacement'
                 ? 'Your replacement request has been submitted to MAISON.'
-                : returnForm.requestType === 'Return'
+                : returnForm.requestType === 'Return Only'
                   ? 'Your return request has been submitted to MAISON.'
                   : 'Your return and refund request has been submitted to MAISON.',
           },
@@ -1123,7 +1129,13 @@ function Account({ wishlist = [], onAddToCart }) {
         updatedAt: serverTimestamp(),
       };
 
-      const requestRef = doc(collection(db, 'returnRequests'));
+      // One deterministic request document per order prevents duplicate
+      // submissions if the customer clicks twice or uses multiple tabs.
+      const requestRef = doc(
+        db,
+        'returnRequests',
+        activeReturnOrder.id
+      );
       const requestBatch = writeBatch(db);
 
       requestBatch.set(requestRef, requestData);
@@ -1133,7 +1145,7 @@ function Account({ wishlist = [], onAddToCart }) {
         type: ADMIN_NOTIFICATION_TYPES.RETURN_REQUESTED,
         message: `${requestData.customerName || 'A customer'} submitted a ${
           requestData.requestType.toLowerCase()
-        } request for order ${requestData.orderReference}.`,
+        } request for order ${requestData.orderReference}.`.slice(0, 500),
         relatedDocumentId: requestRef.id,
         sourceCollection: 'returnRequests',
         targetPage: '/admin-return-requests',
@@ -1147,10 +1159,11 @@ function Account({ wishlist = [], onAddToCart }) {
         createdAt: new Date(),
       };
 
-      setReturnRequests((previous) => [
-        ...previous,
-        newRequest,
-      ]);
+      setReturnRequests((previous) =>
+        previous.some((request) => request.id === newRequest.id)
+          ? previous
+          : [...previous, newRequest]
+      );
 
       toast.success('Your return request has been submitted!');
 
@@ -2091,9 +2104,9 @@ function Account({ wishlist = [], onAddToCart }) {
                                 <input
                                   type="radio"
                                   name="requestType"
-                                  value="Refund"
+                                  value="Return & Refund"
                                   checked={
-                                    returnForm.requestType === 'Refund'
+                                    returnForm.requestType === 'Return & Refund'
                                   }
                                   onChange={handleReturnFormChange}
                                 />
@@ -2119,9 +2132,9 @@ function Account({ wishlist = [], onAddToCart }) {
                                 <input
                                   type="radio"
                                   name="requestType"
-                                  value="Return"
+                                  value="Return Only"
                                   checked={
-                                    returnForm.requestType === 'Return'
+                                    returnForm.requestType === 'Return Only'
                                   }
                                   onChange={handleReturnFormChange}
                                 />

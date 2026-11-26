@@ -223,6 +223,21 @@ service cloud.firestore {
         && getAfter(returnPath).data.createdAt == request.time;
     }
 
+    function hasMatchingReturnNotification(requestId) {
+      let notificationId = 'return_' + requestId;
+      let notificationPath = /databases/$(database)/documents/adminNotifications/$(notificationId);
+
+      return existsAfter(notificationPath)
+        && getAfter(notificationPath).data.type == 'return_requested'
+        && getAfter(notificationPath).data.title == 'New Return Request'
+        && getAfter(notificationPath).data.relatedDocumentId == requestId
+        && getAfter(notificationPath).data.sourceCollection == 'returnRequests'
+        && getAfter(notificationPath).data.targetPage == '/admin-return-requests'
+        && getAfter(notificationPath).data.isRead == false
+        && getAfter(notificationPath).data.readAt == null
+        && getAfter(notificationPath).data.createdAt == request.time;
+    }
+
     function isValidContactNotification(notificationId) {
       let notification = request.resource.data;
       let contactPath = /databases/$(database)/documents/contactMessages/$(notification.relatedDocumentId);
@@ -656,6 +671,11 @@ service cloud.firestore {
 
       allow create: if isSignedIn()
         && request.resource.data.userId == request.auth.uid
+        && requestId == request.resource.data.orderId
+        && !exists(
+          /databases/$(database)/documents/returnRequests/$(requestId)
+        )
+        && hasMatchingReturnNotification(requestId)
 
         && request.resource.data.keys().hasAll([
           'userId',
@@ -743,8 +763,8 @@ service cloud.firestore {
         ]
 
         && request.resource.data.requestType in [
-          'Refund',
-          'Return',
+          'Return & Refund',
+          'Return Only',
           'Replacement'
         ]
 
@@ -773,7 +793,10 @@ service cloud.firestore {
               == 'Replacement Requested'
           )
           || (
-            request.resource.data.requestType in ['Refund', 'Return']
+            request.resource.data.requestType in [
+              'Return & Refund',
+              'Return Only'
+            ]
             && request.resource.data.trackingHistory[0].status
               == 'Return Requested'
           )
