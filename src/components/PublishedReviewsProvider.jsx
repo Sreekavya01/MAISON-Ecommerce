@@ -29,7 +29,9 @@ const getCreatedAtMillis = (review) => {
 const normalizePublishedReview = (reviewDoc) => {
   const data = reviewDoc.data();
   const rating = Number(data.rating);
-  const review = typeof data.review === 'string' ? data.review.trim() : '';
+  const hasValidReviewText =
+    typeof data.review === 'string' && data.review.length <= 2000;
+  const review = hasValidReviewText ? data.review.trim() : '';
   const customerName =
     typeof data.customerName === 'string' ? data.customerName.trim() : '';
   const products = Array.isArray(data.products) ? data.products : [];
@@ -43,7 +45,7 @@ const normalizePublishedReview = (reviewDoc) => {
     !Number.isInteger(rating) ||
     rating < 1 ||
     rating > 5 ||
-    !review ||
+    !hasValidReviewText ||
     !customerName ||
     ['customer', 'maison customer'].includes(customerName.toLowerCase()) ||
     productIds.length === 0

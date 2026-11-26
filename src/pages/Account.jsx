@@ -708,13 +708,12 @@ function Account({ wishlist = [], onAddToCart }) {
       return;
     }
 
-    if (reviewForm.rating < 1 || reviewForm.rating > 5) {
+    if (
+      !Number.isInteger(reviewForm.rating) ||
+      reviewForm.rating < 1 ||
+      reviewForm.rating > 5
+    ) {
       toast.error('Please select a star rating.');
-      return;
-    }
-
-    if (reviewText.length < 10) {
-      toast.error('Please write at least 10 characters about your experience.');
       return;
     }
 
@@ -737,7 +736,7 @@ function Account({ wishlist = [], onAddToCart }) {
 
       if (
         latestOrder.userId !== currentUser.uid ||
-        String(latestOrder.orderStatus || '').toLowerCase() !== 'delivered'
+        String(latestOrder.orderStatus || '').trim() !== 'Delivered'
       ) {
         toast.error('Only your own delivered orders can be reviewed.');
         return;
@@ -771,44 +770,48 @@ function Account({ wishlist = [], onAddToCart }) {
       }
 
       const reviewId = getReviewDocumentId(order.id, productId);
-      const productName = String(
-        reviewedProduct.name || product.name || 'MAISON Product'
-      ).trim();
+      const productName = String(reviewedProduct.name || '').trim();
+
+      if (!productName || productName.length > 500) {
+        toast.error('This product is missing a valid name for the review.');
+        return;
+      }
+
+      const customerName = verifiedCustomerName.slice(0, 150);
       const reviewData = {
-  userId: currentUser.uid,
-  orderId: order.id,
-  orderReference: latestOrder.orderId || order.id,
+        userId: currentUser.uid,
+        orderId: order.id,
+        orderReference: latestOrder.orderId || order.id,
 
-  customerName: verifiedCustomerName,
-  customerEmail: currentUser.email || '',
+        customerName,
+        customerEmail: currentUser.email || '',
 
-  productId,
-  productName,
-  productSummary: productName.slice(0, 500),
+        productId,
+        productName,
+        productSummary: productName,
 
-  // Required by Firestore Security Rules
-  product: reviewedProduct,
+        // Keep the reviewed product tied to the delivered order. Firestore
+        // Rules verify both fields against that order before allowing create.
+        product: reviewedProduct,
+        products: [reviewedProduct],
 
-  // Only one product in each review
-  products: [reviewedProduct],
+        orderTotal: Number(latestOrder.total || 0),
 
-  orderTotal: Number(latestOrder.total || 0),
+        rating: reviewForm.rating,
+        review: reviewText,
 
-  rating: reviewForm.rating,
-  review: reviewText,
+        status: 'pending',
 
-  status: 'pending',
-
-  createdAt: serverTimestamp(),
-  updatedAt: serverTimestamp(),
-};
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      };
       const reviewBatch = writeBatch(db);
 
       reviewBatch.set(doc(db, 'customerReviews', reviewId), reviewData);
       addAdminNotificationWrite(reviewBatch, {
         id: adminNotificationIds.customerReview(reviewId),
         type: ADMIN_NOTIFICATION_TYPES.CUSTOMER_REVIEW,
-        message: `${verifiedCustomerName} submitted a ${reviewForm.rating}-star review for ${productName} in order ${reviewData.orderReference}.`.slice(0, 500),
+        message: `${customerName} submitted a ${reviewForm.rating}-star review for ${productName} in order ${reviewData.orderReference}.`.slice(0, 500),
         relatedDocumentId: reviewId,
         sourceCollection: 'customerReviews',
         targetPage: '/admin-customer-reviews',
@@ -1755,7 +1758,7 @@ function Account({ wishlist = [], onAddToCart }) {
                                 Review {activeFeedbackProduct.name || 'this product'}
                               </h3>
                               <p>
-                                Share a separate rating and written review for
+                                Share a rating and optional written review for
                                 this delivered product.
                               </p>
                             </div>
@@ -1819,7 +1822,7 @@ function Account({ wishlist = [], onAddToCart }) {
                             <label
                               htmlFor={`review-${order.id}-${activeFeedbackProductId}`}
                             >
-                              Written review
+                              Written review (optional)
                               <textarea
                                 id={`review-${order.id}-${activeFeedbackProductId}`}
                                 value={reviewForm.review}
@@ -1827,11 +1830,9 @@ function Account({ wishlist = [], onAddToCart }) {
                                   ...previous,
                                   review: event.target.value,
                                 }))}
-                                minLength={10}
                                 maxLength={2000}
                                 rows={5}
-                                placeholder={`What stood out about ${activeFeedbackProduct.name || 'this product'}?`}
-                                required
+                                placeholder={`Optional: What stood out about ${activeFeedbackProduct.name || 'this product'}?`}
                               />
                               <small>
                                 {reviewForm.review.length}/2000 characters

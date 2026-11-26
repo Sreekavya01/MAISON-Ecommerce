@@ -112,7 +112,7 @@ function ProductReviews({ product }) {
                 ))}
               </div>
 
-              <p>{review.review}</p>
+              {review.review && <p>{review.review}</p>}
             </article>
           ))}
         </div>

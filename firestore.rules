@@ -269,7 +269,9 @@ service cloud.firestore {
         && getAfter(reviewPath).data.userId == request.auth.uid
         && getAfter(reviewPath).data.rating >= 1
         && getAfter(reviewPath).data.rating <= 5
-        && getAfter(reviewPath).data.createdAt == request.time;
+        && getAfter(reviewPath).data.status == 'pending'
+        && getAfter(reviewPath).data.createdAt == request.time
+        && getAfter(reviewPath).data.updatedAt == request.time;
     }
 
     function hasMatchingCustomerReviewNotification(reviewId) {
@@ -283,6 +285,7 @@ service cloud.firestore {
         && getAfter(notificationPath).data.sourceCollection == 'customerReviews'
         && getAfter(notificationPath).data.targetPage == '/admin-customer-reviews'
         && getAfter(notificationPath).data.isRead == false
+        && getAfter(notificationPath).data.readAt == null
         && getAfter(notificationPath).data.createdAt == request.time;
     }
 
@@ -573,6 +576,7 @@ service cloud.firestore {
           'productId',
           'productName',
           'productSummary',
+          'product',
           'products',
           'orderTotal',
           'rating',
@@ -591,6 +595,7 @@ service cloud.firestore {
           'productId',
           'productName',
           'productSummary',
+          'product',
           'products',
           'orderTotal',
           'rating',
@@ -610,7 +615,7 @@ service cloud.firestore {
         && request.resource.data.orderReference
           == get(
             /databases/$(database)/documents/orders/$(request.resource.data.orderId)
-          ).data.orderId
+          ).data.get('orderId', request.resource.data.orderId)
         && request.resource.data.customerName is string
         && request.resource.data.customerName.size() > 0
         && request.resource.data.customerName.size() <= 150
@@ -624,8 +629,11 @@ service cloud.firestore {
         && request.resource.data.productSummary.size() <= 500
         && request.resource.data.productSummary
           == request.resource.data.productName
+        && request.resource.data.product is map
         && request.resource.data.products is list
         && request.resource.data.products.size() == 1
+        && request.resource.data.product
+          == request.resource.data.products[0]
         && get(
           /databases/$(database)/documents/orders/$(request.resource.data.orderId)
         ).data.products.hasAny(request.resource.data.products)
@@ -646,7 +654,6 @@ service cloud.firestore {
         && request.resource.data.rating >= 1
         && request.resource.data.rating <= 5
         && request.resource.data.review is string
-        && request.resource.data.review.size() >= 10
         && request.resource.data.review.size() <= 2000
         && request.resource.data.status == 'pending'
         && request.resource.data.createdAt == request.time
