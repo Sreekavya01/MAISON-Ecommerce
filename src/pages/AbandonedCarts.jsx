@@ -30,6 +30,7 @@ import './AbandonedCarts.css';
 
 const ABANDONED_AFTER_HOURS = 24;
 const FOLLOW_UP_AFTER_HOURS = 48;
+const MAISON_ADMIN_GMAIL = 'sreekavya0125@gmail.com';
 
 
 // FORMAT CURRENCY
@@ -281,45 +282,92 @@ function AbandonedCarts() {
   // CONTACT CUSTOMER
 
   const handleContactCustomer = (cart) => {
+    const customerEmail =
+      typeof cart.email === 'string'
+        ? cart.email.trim()
+        : '';
+
     if (
-      !cart.email ||
-      cart.email === 'Email unavailable'
+      !customerEmail ||
+      customerEmail === 'Email unavailable'
     ) {
       toast.error('Customer email address is unavailable.');
       return;
     }
 
-    const subject = 'MAISON - Complete Your Purchase';
+    const subject = 'Complete Your MAISON Order';
 
-    const productDetails = cart.products
-      .map(
-        (product) =>
-          `${product.name} - Quantity: ${product.quantity}`
-      )
-      .join('\n');
+    const customerName =
+      typeof cart.customer === 'string' &&
+      cart.customer !== 'Customer'
+        ? cart.customer.trim()
+        : '';
 
-    const message = `Hello ${cart.customer},
+    const productDetails = Array.isArray(cart.products)
+      ? cart.products
+          .filter(
+            (product) =>
+              product?.name &&
+              product.name !== 'Unnamed Product'
+          )
+          .map((product) => {
+            const options = [
+              product.selectedColor
+                ? `Colour: ${product.selectedColor}`
+                : '',
+              product.selectedSize
+                ? `Size: ${product.selectedSize}`
+                : '',
+            ].filter(Boolean);
 
-We noticed that you left some items in your MAISON shopping cart.
+            const optionText = options.length
+              ? ` (${options.join(', ')})`
+              : '';
 
-Your selected products:
+            return `- ${product.name}${optionText} - Quantity: ${product.quantity}`;
+          })
+          .join('\n')
+      : '';
 
-${productDetails}
+    const messageLines = [
+      customerName ? `Hello ${customerName},` : 'Hello,',
+      '',
+      'We noticed that you left some items in your MAISON shopping cart. Your selections are still waiting for you, and we would be happy to help if you have any questions before completing your order.',
+    ];
 
-Total Cart Value: ${formatCurrency(cart.amount)}
+    if (productDetails) {
+      messageLines.push('', 'Cart details:', productDetails);
+    }
 
-Your selected products are waiting for you!
+    if (Number.isFinite(Number(cart.amount))) {
+      messageLines.push(
+        '',
+        `Estimated cart total: ${formatCurrency(cart.amount)}`
+      );
+    }
 
-Visit MAISON and complete your purchase whenever you are ready.
+    messageLines.push(
+      '',
+      'You can return to MAISON whenever you are ready to complete your order.',
+      '',
+      'Warm regards,',
+      'MAISON Customer Care'
+    );
 
-Thank you,
-Team MAISON`;
+    const gmailParameters = new URLSearchParams({
+      authuser: MAISON_ADMIN_GMAIL,
+      view: 'cm',
+      fs: '1',
+      to: customerEmail,
+      su: subject,
+      body: messageLines.join('\n'),
+    });
 
-    const emailURL = `mailto:${cart.email}?subject=${encodeURIComponent(
-      subject
-    )}&body=${encodeURIComponent(message)}`;
-
-    window.location.href = emailURL;
+    window.open(
+      `https://mail.google.com/mail/?${gmailParameters.toString()}`,
+      '_blank',
+      'noopener,noreferrer'
+    );
   };
 
 

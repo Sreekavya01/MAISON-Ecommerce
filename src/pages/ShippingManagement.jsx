@@ -13,6 +13,8 @@ import {
   X,
   ArrowRight,
   Ban,
+  Copy,
+  Check,
 } from 'lucide-react';
 
 import {
@@ -23,77 +25,12 @@ import {
   arrayUnion,
   serverTimestamp,
 } from 'firebase/firestore';
+import { httpsCallable } from 'firebase/functions';
 
-import { db } from '../firebase';
+import { db, functions } from '../firebase';
 import toast from 'react-hot-toast';
 
 import './ShippingManagement.css';
-
-const EMAIL_SERVICE_URL =
-  'https://maison-email-service.sreekavya0125.workers.dev';
-
-const initialShipments = [
-  {
-    id: 'SHP1001',
-    orderId: '#MSN1025',
-    customer: 'Ananya Sharma',
-    product: 'Elegant Summer Dress',
-    courier: 'BlueDart',
-    trackingId: 'BD789456123',
-    shippedDate: '08 Nov 2026',
-    estimatedDate: '11 Nov 2026',
-    status: 'Delivered',
-    address: 'Anna Nagar, Chennai, Tamil Nadu',
-  },
-  {
-    id: 'SHP1002',
-    orderId: '#MSN1024',
-    customer: 'Rahul Verma',
-    product: 'Classic Sneakers',
-    courier: 'Delhivery',
-    trackingId: 'DL456789123',
-    shippedDate: '08 Nov 2026',
-    estimatedDate: '12 Nov 2026',
-    status: 'In Transit',
-    address: 'Banjara Hills, Hyderabad, Telangana',
-  },
-  {
-    id: 'SHP1003',
-    orderId: '#MSN1023',
-    customer: 'Priya Reddy',
-    product: 'Premium Handbag',
-    courier: 'DTDC',
-    trackingId: 'DT123456789',
-    shippedDate: '07 Nov 2026',
-    estimatedDate: '10 Nov 2026',
-    status: 'Shipped',
-    address: 'T. Nagar, Chennai, Tamil Nadu',
-  },
-  {
-    id: 'SHP1004',
-    orderId: '#MSN1022',
-    customer: 'Arjun Kumar',
-    product: 'Wireless Headphones',
-    courier: 'BlueDart',
-    trackingId: 'BD987654321',
-    shippedDate: 'Not shipped',
-    estimatedDate: '14 Nov 2026',
-    status: 'Processing',
-    address: 'Whitefield, Bengaluru, Karnataka',
-  },
-  {
-    id: 'SHP1005',
-    orderId: '#MSN1021',
-    customer: 'Meera Nair',
-    product: 'Smart Watch',
-    courier: 'Delhivery',
-    trackingId: 'DL789123456',
-    shippedDate: '06 Nov 2026',
-    estimatedDate: '09 Nov 2026',
-    status: 'Out for Delivery',
-    address: 'Adyar, Chennai, Tamil Nadu',
-  },
-];
 
 const statuses = [
   'Processing',
@@ -115,6 +52,152 @@ const courierOptions = [
   'Other',
 ];
 
+const shipmentProgressSteps = [
+  'Order Placed',
+  'Processing',
+  'Shipped',
+  'In Transit',
+  'Out for Delivery',
+  'Delivered',
+];
+
+const formatDateInputValue = date => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+
+  return year + '-' + month + '-' + day;
+};
+
+const formatShipmentDate = date =>
+  date.toLocaleDateString('en-IN', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  });
+
+const writeTextToClipboard = async text => {
+  if (navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return;
+    } catch {
+      // Fall back to a temporary text area below.
+    }
+  }
+
+  const textArea = document.createElement('textarea');
+
+  textArea.value = text;
+  textArea.style.position = 'fixed';
+  textArea.style.opacity = '0';
+  document.body.appendChild(textArea);
+
+  try {
+    textArea.select();
+
+    if (!document.execCommand('copy')) {
+      throw new Error('COPY_FAILED');
+    }
+  } finally {
+    textArea.remove();
+  }
+};
+
+const getShipmentProgressIndex = shipment => {
+  const getIndex = status => {
+    const normalisedStatus = String(status || '').toLowerCase();
+
+    if (
+      [
+        'pending',
+        'confirmed',
+        'order confirmed',
+      ].includes(normalisedStatus)
+    ) {
+      return 0;
+    }
+
+    return shipmentProgressSteps.findIndex(
+      step => step.toLowerCase() === normalisedStatus
+    );
+  };
+
+  const currentIndex = getIndex(shipment.status);
+
+  if (currentIndex >= 0) return currentIndex;
+
+  return (shipment.trackingHistory || []).reduce(
+    (furthestIndex, historyItem) =>
+      Math.max(furthestIndex, getIndex(historyItem.status)),
+    0
+  );
+};
+
+const getCreatedAtMillis = createdAt => {
+  if (!createdAt) return null;
+
+  try {
+    if (typeof createdAt.toMillis === 'function') {
+      const milliseconds = createdAt.toMillis();
+
+      return Number.isFinite(milliseconds)
+        ? milliseconds
+        : null;
+    }
+
+    if (typeof createdAt.toDate === 'function') {
+      const milliseconds = createdAt.toDate().getTime();
+
+      return Number.isFinite(milliseconds)
+        ? milliseconds
+        : null;
+    }
+
+    if (typeof createdAt.seconds === 'number') {
+      const milliseconds =
+        createdAt.seconds * 1000 +
+        Math.floor((createdAt.nanoseconds || 0) / 1000000);
+
+      return Number.isFinite(milliseconds)
+        ? milliseconds
+        : null;
+    }
+
+    const milliseconds =
+      createdAt instanceof Date
+        ? createdAt.getTime()
+        : new Date(createdAt).getTime();
+
+    return Number.isFinite(milliseconds)
+      ? milliseconds
+      : null;
+  } catch {
+    return null;
+  }
+};
+
+const sortShipmentsNewestFirst = (first, second) => {
+  const firstCreatedAt = getCreatedAtMillis(first.createdAt);
+  const secondCreatedAt = getCreatedAtMillis(second.createdAt);
+
+  if (firstCreatedAt === null && secondCreatedAt === null) {
+    return String(second.firestoreId || second.id).localeCompare(
+      String(first.firestoreId || first.id)
+    );
+  }
+
+  if (firstCreatedAt === null) return 1;
+  if (secondCreatedAt === null) return -1;
+
+  return (
+    secondCreatedAt - firstCreatedAt ||
+    String(second.firestoreId || second.id).localeCompare(
+      String(first.firestoreId || first.id)
+    )
+  );
+};
+
 const convertOrderToShipment = (order, documentId) => {
   const customer = order.customer || {};
 
@@ -125,6 +208,7 @@ const convertOrderToShipment = (order, documentId) => {
   return {
     id: `ORDER-${documentId}`,
     firestoreId: documentId,
+    createdAt: order.createdAt || null,
 
     orderId: order.orderId || documentId,
 
@@ -149,6 +233,9 @@ const convertOrderToShipment = (order, documentId) => {
     estimatedDateISO: order.estimatedDateISO || '',
 
     status: order.orderStatus || 'Order Placed',
+    trackingHistory: Array.isArray(order.trackingHistory)
+      ? order.trackingHistory
+      : [],
 
     cancellationReason: order.cancellationReason || '',
     cancelledAt: order.cancelledAt || null,
@@ -192,7 +279,12 @@ const formatCancellationDate = date => {
   }
 };
 
-// SEND CUSTOMER SHIPPING EMAIL
+// SEND CUSTOMER SHIPPING EMAIL THROUGH AN AUTHENTICATED FIREBASE FUNCTION
+
+const requestShippingUpdateEmail = httpsCallable(
+  functions,
+  'sendShippingUpdateEmail'
+);
 
 const sendCustomerShippingUpdateEmail = async (
   shipment,
@@ -203,124 +295,72 @@ const sendCustomerShippingUpdateEmail = async (
   ).trim();
 
   if (!customerEmail) {
-    console.warn(
-      'Customer email missing for order:',
-      shipment.orderId
-    );
-
     return {
       success: false,
       reason: 'missing-email',
     };
   }
 
-  const isShipped = newStatus === 'Shipped';
-
-  const subject = isShipped
-    ? `MAISON - Your order ${shipment.orderId} has been shipped`
-    : `MAISON - Your order ${shipment.orderId} has been delivered`;
-
-  const heading = isShipped
-    ? 'Your order is on its way!'
-    : 'Your order has been delivered!';
-
-  const message = isShipped
-    ? 'Good news! Your MAISON order has been shipped and is on its way to you.'
-    : 'Your MAISON order has been marked as delivered. We hope you enjoy your purchase.';
-
-  const trackingDetails = [
-    shipment.courier
-      ? `<p><strong>Courier:</strong> ${shipment.courier}</p>`
-      : '',
-
-    shipment.trackingId
-      ? `<p><strong>Tracking ID:</strong> ${shipment.trackingId}</p>`
-      : '',
-
-    shipment.estimatedDate
-      ? `<p><strong>Estimated delivery:</strong> ${shipment.estimatedDate}</p>`
-      : '',
-  ]
-    .filter(Boolean)
-    .join('');
-
-  const html = `
-    <div style="margin:0;padding:32px 12px;background:#f8f7f4;font-family:Arial,sans-serif;color:#172b4d;">
-      <div style="max-width:600px;margin:0 auto;padding:32px;background:#ffffff;border:1px solid #e9e3d8;">
-        <p style="margin:0 0 20px;color:#c6a15b;font-size:13px;font-weight:bold;letter-spacing:3px;">MAISON</p>
-
-        <h1 style="margin:0 0 16px;font-size:25px;">${heading}</h1>
-
-        <p style="font-size:15px;line-height:1.7;">
-          Hello ${shipment.customer || 'Customer'},
-        </p>
-
-        <p style="font-size:15px;line-height:1.7;">
-          ${message}
-        </p>
-
-        <div style="margin:24px 0;padding:18px;background:#f8f7f4;border-left:3px solid #c6a15b;">
-          <p><strong>Order ID:</strong> ${shipment.orderId}</p>
-          <p><strong>Product:</strong> ${shipment.product}</p>
-          <p><strong>Status:</strong> ${newStatus}</p>
-          ${trackingDetails}
-        </div>
-
-        <p>Thank you for shopping with MAISON.</p>
-
-        <p style="margin-top:28px;font-size:13px;color:#777;">
-          MAISON Customer Support
-        </p>
-      </div>
-    </div>
-  `;
-
   try {
-    const response = await fetch(EMAIL_SERVICE_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        to: customerEmail,
-        subject,
-        html,
-      }),
+    const response = await requestShippingUpdateEmail({
+      orderId: shipment.firestoreId,
+      status: newStatus,
     });
 
-    const result = await response.json().catch(() => ({}));
-
-    if (!response.ok) {
-      console.error('Shipping email failed:', result);
-
-      return {
-        success: false,
-        reason:
-          result?.message ||
-          result?.error ||
-          `HTTP ${response.status}`,
-      };
-    }
-
-    return { success: true };
+    return {
+      success: response.data?.success === true,
+      providerId: response.data?.providerId || null,
+    };
   } catch (error) {
-    console.error('Shipping email error:', error);
+    console.error('Shipping email function error:', {
+      code: error.code,
+      message: error.message,
+    });
 
     return {
       success: false,
-      reason: error.message || 'Network error',
+      reason:
+        error.message ||
+        'The secure shipping email service is unavailable.',
     };
   }
 };
 
 function ShippingManagement() {
-  const [shipments, setShipments] = useState(initialShipments);
+  const [shipments, setShipments] = useState([]);
   const [loading, setLoading] = useState(true);
 
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
 
   const [selectedShipment, setSelectedShipment] = useState(null);
+  const [addressExpanded, setAddressExpanded] = useState(false);
+  const [trackingCopied, setTrackingCopied] = useState(false);
+
+  const openShipmentDetails = shipment => {
+    setAddressExpanded(false);
+    setTrackingCopied(false);
+    setSelectedShipment(shipment);
+  };
+
+  const copyTrackingId = async () => {
+    const trackingId = selectedShipment?.trackingId?.trim();
+
+    if (!trackingId) {
+      toast.error('Add a tracking ID before copying.');
+      return;
+    }
+
+    try {
+      await writeTextToClipboard(trackingId);
+
+      setTrackingCopied(true);
+      toast.success('Tracking ID copied.');
+    } catch (error) {
+      console.error('Tracking ID copy error:', error);
+      toast.error('Unable to copy the tracking ID.');
+    }
+  };
 
   // LOAD CUSTOMER ORDERS FROM FIREBASE
 
@@ -329,17 +369,26 @@ function ShippingManagement() {
       collection(db, 'orders'),
 
       snapshot => {
-        const firebaseShipments = snapshot.docs.map(document =>
-          convertOrderToShipment(
-            document.data(),
-            document.id
+        const firebaseShipments = snapshot.docs
+          .map(document =>
+            convertOrderToShipment(
+              document.data(),
+              document.id
+            )
           )
-        );
+          .sort(sortShipmentsNewestFirst);
 
-        setShipments([
-          ...firebaseShipments,
-          ...initialShipments,
-        ]);
+        setShipments(firebaseShipments);
+
+        setSelectedShipment(previous => {
+          if (!previous) return previous;
+
+          return (
+            firebaseShipments.find(
+              shipment => shipment.id === previous.id
+            ) || null
+          );
+        });
 
         setLoading(false);
       },
@@ -457,13 +506,28 @@ function ShippingManagement() {
     };
 
     try {
+      const orderUpdate = {
+        orderStatus: newStatus,
+        trackingHistory: arrayUnion(historyEntry),
+        updatedAt: serverTimestamp(),
+      };
+
+      if (
+        newStatus === 'Shipped' &&
+        !shipment.shippedDateISO &&
+        !shipment.shippedDate
+      ) {
+        const shippedAt = new Date();
+
+        orderUpdate.shippedDateISO =
+          formatDateInputValue(shippedAt);
+        orderUpdate.shippedDate =
+          formatShipmentDate(shippedAt);
+      }
+
       await updateDoc(
         doc(db, 'orders', shipment.firestoreId),
-        {
-          orderStatus: newStatus,
-          trackingHistory: arrayUnion(historyEntry),
-          updatedAt: serverTimestamp(),
-        }
+        orderUpdate
       );
 
       toast.success('Shipment status updated successfully.');
@@ -556,6 +620,27 @@ function ShippingManagement() {
   const cancelledCount = shipments.filter(
     item => item.status === 'Cancelled'
   ).length;
+
+  const selectedProgressIndex = selectedShipment
+    ? getShipmentProgressIndex(selectedShipment)
+    : 0;
+
+  const selectedProgressPercent =
+    shipmentProgressSteps.length > 1
+      ? (selectedProgressIndex /
+          (shipmentProgressSteps.length - 1)) *
+        100
+      : 0;
+
+  const selectedAddress =
+    selectedShipment?.address || 'Address not available';
+
+  const addressNeedsExpansion = selectedAddress.length > 78;
+
+  const displayedAddress =
+    addressExpanded || !addressNeedsExpansion
+      ? selectedAddress
+      : selectedAddress.slice(0, 78).trimEnd() + '…';
 
   return (
     <div className="shipping-management">
@@ -779,7 +864,7 @@ function ShippingManagement() {
                       <button
                         className="shipping-view-button"
                         onClick={() =>
-                          setSelectedShipment(shipment)
+                          openShipmentDetails(shipment)
                         }
                         aria-label="View shipment details"
                       >
@@ -835,7 +920,19 @@ function ShippingManagement() {
 
               <div>
                 <span>SHIPMENT DETAILS</span>
-                <h2>{selectedShipment.orderId}</h2>
+
+                <div className="shipping-modal-title-row">
+                  <h2>{selectedShipment.orderId}</h2>
+
+                  <span
+                    className={
+                      'shipping-status shipping-modal-status ' +
+                      getStatusClass(selectedShipment.status)
+                    }
+                  >
+                    {selectedShipment.status}
+                  </span>
+                </div>
               </div>
 
               <button
@@ -903,17 +1000,92 @@ function ShippingManagement() {
               </div>
 
               <div>
-                <span>Current Status</span>
-                <strong>{selectedShipment.status}</strong>
+                <span>Expected Delivery</span>
+                <strong>
+                  {selectedShipment.status === 'Cancelled'
+                    ? 'Not applicable'
+                    : selectedShipment.estimatedDate ||
+                      'To be confirmed'}
+                </strong>
               </div>
 
             </div>
+
+            <section
+              className={
+                'shipping-progress-card' +
+                (selectedShipment.status === 'Cancelled'
+                  ? ' cancelled'
+                  : '')
+              }
+              aria-label="Shipment progress"
+            >
+              <div className="shipping-progress-heading">
+                <div>
+                  <span>DELIVERY JOURNEY</span>
+                  <h3>Shipment Progress</h3>
+                </div>
+
+                <strong>
+                  {selectedShipment.status === 'Cancelled'
+                    ? 'Journey before cancellation'
+                    : selectedShipment.status}
+                </strong>
+              </div>
+
+              <div className="shipping-progress-track">
+                <div className="shipping-progress-rail">
+                  <div
+                    className="shipping-progress-fill"
+                    style={{
+                      width: selectedProgressPercent + '%',
+                    }}
+                  />
+                </div>
+
+                {shipmentProgressSteps.map((step, index) => {
+                  const isComplete = index < selectedProgressIndex;
+                  const isCurrent = index === selectedProgressIndex;
+
+                  return (
+                    <div
+                      className={
+                        'shipping-progress-step' +
+                        (isComplete ? ' complete' : '') +
+                        (isCurrent ? ' current' : '')
+                      }
+                      key={step}
+                    >
+                      <div className="shipping-progress-marker">
+                        {isComplete ? (
+                          <Check size={13} />
+                        ) : (
+                          index + 1
+                        )}
+                      </div>
+
+                      <span>{step}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
 
             {/* SHIPPING CONTROLS - ACTIVE ORDERS ONLY */}
 
             {selectedShipment.status !== 'Cancelled' ? (
 
               <>
+
+                <div className="shipping-controls-heading">
+                  <span>FULFILMENT DETAILS</span>
+                  <h3>Courier & Delivery Information</h3>
+                  <p>
+                    Changes are saved to Firestore automatically.
+                  </p>
+                </div>
+
+                <div className="shipping-controls-grid">
 
                 {/* COURIER PARTNER */}
 
@@ -955,17 +1127,43 @@ function ShippingManagement() {
                     Tracking ID
                   </label>
 
-                  <input
-                    id="tracking-id"
-                    type="text"
-                    placeholder="Enter courier tracking ID"
-                    value={selectedShipment.trackingId || ''}
-                    onChange={event =>
-                      updateShipment(selectedShipment.id, {
-                        trackingId: event.target.value,
-                      })
-                    }
-                  />
+                  <div className="shipping-tracking-control">
+                    <input
+                      id="tracking-id"
+                      type="text"
+                      placeholder="Enter courier tracking ID"
+                      value={selectedShipment.trackingId || ''}
+                      onChange={event => {
+                        setTrackingCopied(false);
+                        updateShipment(selectedShipment.id, {
+                          trackingId: event.target.value,
+                        });
+                      }}
+                    />
+
+                    <button
+                      type="button"
+                      className="shipping-copy-button"
+                      onClick={copyTrackingId}
+                      disabled={!selectedShipment.trackingId?.trim()}
+                      aria-label={
+                        trackingCopied
+                          ? 'Tracking ID copied'
+                          : 'Copy tracking ID'
+                      }
+                      title={
+                        trackingCopied
+                          ? 'Tracking ID copied'
+                          : 'Copy tracking ID'
+                      }
+                    >
+                      {trackingCopied ? (
+                        <Check size={16} />
+                      ) : (
+                        <Copy size={16} />
+                      )}
+                    </button>
+                  </div>
 
                 </div>
 
@@ -1031,6 +1229,8 @@ function ShippingManagement() {
 
                 </div>
 
+                </div>
+
               </>
 
             ) : (
@@ -1050,31 +1250,33 @@ function ShippingManagement() {
 
             <div className="shipping-address">
 
-              <MapPin size={19} />
+              <div className="shipping-address-icon">
+                <MapPin size={19} />
+              </div>
 
               <div>
                 <span>Delivery Address</span>
 
                 <strong>
-                  {selectedShipment.address}
+                  {displayedAddress}
                 </strong>
+
+                {addressNeedsExpansion && (
+                  <button
+                    type="button"
+                    className="shipping-address-toggle"
+                    onClick={() =>
+                      setAddressExpanded(previous => !previous)
+                    }
+                    aria-expanded={addressExpanded}
+                  >
+                    {addressExpanded
+                      ? 'Show Less'
+                      : 'View Full Address'}
+                    <ArrowRight size={14} />
+                  </button>
+                )}
               </div>
-
-            </div>
-
-            {/* CURRENT STATUS */}
-
-            <div className="shipping-current-status">
-
-              <span>Current Shipment Status</span>
-
-              <span
-                className={`shipping-status ${getStatusClass(
-                  selectedShipment.status
-                )}`}
-              >
-                {selectedShipment.status}
-              </span>
 
             </div>
 
@@ -1111,13 +1313,25 @@ function ShippingManagement() {
 
             )}
 
-            <button
-              className="shipping-modal-close"
-              onClick={() => setSelectedShipment(null)}
-            >
-              Close Details
-              <ArrowRight size={17} />
-            </button>
+            <div className="shipping-modal-footer-actions">
+              {selectedShipment.status !== 'Cancelled' && (
+                <p>
+                  <CheckCircle size={16} />
+                  Changes sync automatically with Firestore.
+                </p>
+              )}
+
+              <button
+                type="button"
+                className="shipping-modal-close"
+                onClick={() => setSelectedShipment(null)}
+              >
+                {selectedShipment.status === 'Cancelled'
+                  ? 'Close Details'
+                  : 'Save Changes & Close'}
+                <ArrowRight size={17} />
+              </button>
+            </div>
 
           </div>
 

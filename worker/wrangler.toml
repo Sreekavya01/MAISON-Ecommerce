@@ -1,0 +1,7 @@
+name = "maison-email-service"
+main = "src/index.js"
+compatibility_date = "2026-11-27"
+workers_dev = true
+
+[vars]
+ALLOWED_ORIGINS = "http://localhost:5173,https://maison-ecommerce-d75bd.web.app,https://maison-ecommerce-d75bd.firebaseapp.com"

@@ -5,6 +5,7 @@ const {
   getFirestore,
 } = require('firebase-admin/firestore');
 const { setGlobalOptions } = require('firebase-functions/v2');
+const { defineSecret } = require('firebase-functions/params');
 const {
   onDocumentCreated,
   onDocumentUpdated,
@@ -16,6 +17,7 @@ initializeApp();
 setGlobalOptions({ maxInstances: 10 });
 
 const db = getFirestore();
+const EMAIL_SERVICE_TOKEN = defineSecret('EMAIL_SERVICE_TOKEN');
 const EMAIL_SERVICE_URL =
   'https://maison-email-service.sreekavya0125.workers.dev';
 const FEEDBACK_DELAY_MS = 2 * 24 * 60 * 60 * 1000;
@@ -44,6 +46,65 @@ const escapeHtml = (value = '') =>
     '"': '&quot;',
     "'": '&#39;',
   })[character]);
+
+const sendEmailThroughWorker = async ({
+  to,
+  subject,
+  html,
+  idempotencyKey,
+}) => {
+  const serviceToken = String(
+    EMAIL_SERVICE_TOKEN.value() || ''
+  ).trim();
+
+  if (!serviceToken) {
+    throw new Error('EMAIL_SERVICE_TOKEN is not configured.');
+  }
+
+  const headers = {
+    'Content-Type': 'application/json',
+    Authorization: 'Bearer ' + serviceToken,
+  };
+
+  if (idempotencyKey) {
+    headers['Idempotency-Key'] = idempotencyKey;
+  }
+
+  const response = await fetch(EMAIL_SERVICE_URL, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      to,
+      subject,
+      html,
+      idempotencyKey,
+    }),
+  });
+
+  const responseText = await response.text();
+  let result = {};
+
+  if (responseText) {
+    try {
+      result = JSON.parse(responseText);
+    } catch {
+      result = { message: responseText.slice(0, 500) };
+    }
+  }
+
+  if (!response.ok || result.success === false) {
+    const workerError = new Error(
+      result.message ||
+      result.error ||
+      'Email service returned HTTP ' + response.status
+    );
+
+    workerError.status = response.status;
+    throw workerError;
+  }
+
+  return result;
+};
 
 const getStorefrontUrl = () => {
   const configuredUrl = String(process.env.MAISON_SITE_URL || '')
@@ -249,6 +310,190 @@ exports.submitProductReview = onCall(async (request) => {
     status: 'pending',
   };
 });
+
+exports.sendShippingUpdateEmail = onCall(
+  {
+    secrets: [EMAIL_SERVICE_TOKEN],
+  },
+  async (request) => {
+    if (!request.auth) {
+      throw new HttpsError(
+        'unauthenticated',
+        'Sign in as an administrator to send shipping emails.'
+      );
+    }
+
+    const orderId = String(request.data?.orderId || '').trim();
+    const requestedStatus = String(
+      request.data?.status || ''
+    ).trim();
+    const allowedStatuses = ['Shipped', 'Delivered'];
+
+    if (
+      !orderId ||
+      orderId.length > 200 ||
+      orderId.includes('/') ||
+      !allowedStatuses.includes(requestedStatus)
+    ) {
+      throw new HttpsError(
+        'invalid-argument',
+        'A valid order and shipping status are required.'
+      );
+    }
+
+    const [adminSnapshot, orderSnapshot] = await Promise.all([
+      db.collection('users').doc(request.auth.uid).get(),
+      db.collection('orders').doc(orderId).get(),
+    ]);
+
+    if (
+      !adminSnapshot.exists ||
+      adminSnapshot.data()?.role !== 'admin'
+    ) {
+      throw new HttpsError(
+        'permission-denied',
+        'Only MAISON administrators can send shipping emails.'
+      );
+    }
+
+    if (!orderSnapshot.exists) {
+      throw new HttpsError('not-found', 'Order not found.');
+    }
+
+    const order = orderSnapshot.data();
+    const currentStatus = String(order.orderStatus || '').trim();
+
+    if (currentStatus !== requestedStatus) {
+      throw new HttpsError(
+        'failed-precondition',
+        'The saved order status does not match the email status.'
+      );
+    }
+
+    const customerEmail = String(
+      order.customer?.email ||
+      order.customerEmail ||
+      order.email ||
+      ''
+    ).trim();
+
+    if (
+      !customerEmail ||
+      customerEmail.length > 320 ||
+      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail)
+    ) {
+      throw new HttpsError(
+        'failed-precondition',
+        'The order does not have a valid customer email address.'
+      );
+    }
+
+    const isShipped = requestedStatus === 'Shipped';
+    const orderReference = escapeHtml(order.orderId || orderId);
+    const customerName = escapeHtml(
+      order.customer?.fullName ||
+      order.customer?.name ||
+      'Customer'
+    );
+    const productNames = (Array.isArray(order.products)
+      ? order.products
+      : []
+    )
+      .map((product) => escapeHtml(product.name || 'MAISON product'))
+      .filter(Boolean)
+      .join(', ');
+    const courier = escapeHtml(order.courier || '');
+    const trackingId = escapeHtml(order.trackingId || '');
+    const estimatedDate = escapeHtml(order.estimatedDate || '');
+    const subject =
+      'MAISON - Your order ' +
+      String(order.orderId || orderId) +
+      (isShipped ? ' has been shipped' : ' has been delivered');
+    const heading = isShipped
+      ? 'Your order is on its way!'
+      : 'Your order has been delivered!';
+    const message = isShipped
+      ? 'Good news! Your MAISON order has been shipped and is on its way to you.'
+      : 'Your MAISON order has been marked as delivered. We hope you enjoy your purchase.';
+    const trackingDetails = [
+      courier
+        ? '<p><strong>Courier:</strong> ' + courier + '</p>'
+        : '',
+      trackingId
+        ? '<p><strong>Tracking ID:</strong> ' + trackingId + '</p>'
+        : '',
+      estimatedDate
+        ? '<p><strong>Estimated delivery:</strong> ' +
+          estimatedDate +
+          '</p>'
+        : '',
+    ].join('');
+    const html = [
+      '<div style="margin:0;padding:32px 12px;background:#f8f7f4;',
+      'font-family:Arial,sans-serif;color:#172b4d;">',
+      '<div style="max-width:600px;margin:0 auto;padding:32px;',
+      'background:#ffffff;border:1px solid #e9e3d8;">',
+      '<p style="margin:0 0 20px;color:#c6a15b;font-size:13px;',
+      'font-weight:bold;letter-spacing:3px;">MAISON</p>',
+      '<h1 style="margin:0 0 16px;font-size:25px;">',
+      heading,
+      '</h1>',
+      '<p style="font-size:15px;line-height:1.7;">Hello ',
+      customerName,
+      ',</p>',
+      '<p style="font-size:15px;line-height:1.7;">',
+      message,
+      '</p>',
+      '<div style="margin:24px 0;padding:18px;background:#f8f7f4;',
+      'border-left:3px solid #c6a15b;">',
+      '<p><strong>Order ID:</strong> ',
+      orderReference,
+      '</p>',
+      productNames
+        ? '<p><strong>Product:</strong> ' + productNames + '</p>'
+        : '',
+      '<p><strong>Status:</strong> ',
+      escapeHtml(requestedStatus),
+      '</p>',
+      trackingDetails,
+      '</div>',
+      '<p>Thank you for shopping with MAISON.</p>',
+      '<p style="margin-top:28px;font-size:13px;color:#777;">',
+      'MAISON Customer Support</p>',
+      '</div></div>',
+    ].join('');
+
+    try {
+      const result = await sendEmailThroughWorker({
+        to: customerEmail,
+        subject,
+        html,
+        idempotencyKey:
+          'maison-shipping-' +
+          orderId +
+          '-' +
+          requestedStatus.toLowerCase(),
+      });
+
+      return {
+        success: true,
+        providerId: result.result?.id || result.id || null,
+      };
+    } catch (error) {
+      console.error('Shipping email delivery failed.', {
+        orderId,
+        status: requestedStatus,
+        workerStatus: error.status || null,
+        message: error.message,
+      });
+
+      throw new HttpsError(
+        'internal',
+        'The shipping status was saved, but the email service rejected the message.'
+      );
+    }
+  }
+);
 
 const createNotificationOnce = async (notificationId, notification) => {
   const notificationRef = db
@@ -599,10 +844,7 @@ const sendFeedbackEmail = async ({ order, orderId }) => {
     orderId
   )}#${reviewAnchor}`;
 
-  const response = await fetch(EMAIL_SERVICE_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
+  await sendEmailThroughWorker({
       to: customerEmail,
       subject: `How was your MAISON order ${order.orderId || orderId}?`,
       idempotencyKey: `maison-feedback-${orderId}`,
@@ -629,16 +871,7 @@ const sendFeedbackEmail = async ({ order, orderId }) => {
           </div>
         </div>
       `,
-    }),
   });
-
-  const result = await response.json().catch(() => ({}));
-
-  if (!response.ok || result.success === false) {
-    throw new Error(
-      result.message || result.error || `Email service returned ${response.status}`
-    );
-  }
 
   return { skipped: false };
 };
@@ -750,6 +983,7 @@ exports.sendDueFeedbackEmails = onSchedule(
     timeZone: 'Asia/Kolkata',
     retryCount: 3,
     maxInstances: 1,
+    secrets: [EMAIL_SERVICE_TOKEN],
   },
   async () => {
     const dueQueue = await db
